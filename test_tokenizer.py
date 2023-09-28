@@ -1,8 +1,3 @@
-## RWKV World Model HuggingFace Tokenizer
-
-The reference program below compares the encoding and decoding results of the original tokenizer and the HuggingFace version tokenizer for different sentences.
-
-```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from rwkv_tokenizer import TRIE_TOKENIZER
 token_path = "/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer"
@@ -25,6 +20,4 @@ assert hf_tokenizer.decode(hf_tokenizer("S:2")['input_ids']) == 'S:2'
 assert hf_tokenizer.decode(hf_tokenizer("Made in China")['input_ids']) == 'Made in China'
 assert hf_tokenizer.decode(hf_tokenizer("今天天气不错")['input_ids']) == '今天天气不错'
 assert hf_tokenizer.decode(hf_tokenizer("男：听说你们公司要派你去南方工作?")['input_ids']) == '男：听说你们公司要派你去南方工作?'
-```
-
 
