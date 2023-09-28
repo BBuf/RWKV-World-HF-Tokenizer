@@ -238,17 +238,20 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
             vocab_file,
             errors="replace",
             unk_token="[UNK]",
-            eos_token="[EOS]",
+            bos_token="[0]",
+            eos_token="[EOS, 0]",
             pad_token="[PAD]",
             add_bos_token=False,
             **kwargs
     ):
+        bos_token = AddedToken(bos_token, lstrip=False, rstrip=False) if isinstance(bos_token, str) else bos_token
         eos_token = AddedToken(eos_token, lstrip=False, rstrip=False) if isinstance(eos_token, str) else eos_token
         unk_token = AddedToken(unk_token, lstrip=False, rstrip=False) if isinstance(unk_token, str) else unk_token
         pad_token = AddedToken(pad_token, lstrip=False, rstrip=False) if isinstance(pad_token, str) else pad_token
         super().__init__(
             errors=errors,
             unk_token=unk_token,
+            bos_token=bos_token,
             eos_token=eos_token,
             pad_token=pad_token,
             add_bos_token=add_bos_token,
