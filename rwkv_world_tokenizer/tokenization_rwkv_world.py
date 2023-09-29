@@ -237,10 +237,10 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
             self,
             vocab_file,
             errors="replace",
-            unk_token="UNK",
+            unk_token="",
             bos_token="",
             eos_token="",
-            pad_token="PAD",
+            pad_token="",
             add_bos_token=False,
             **kwargs
     ):
