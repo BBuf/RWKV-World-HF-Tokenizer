@@ -210,7 +210,7 @@ class DATrie:
                 res_str += rstr
             else:
                 print("ERROR unknown id %d" % rid)
-                res_str += "[UNK]"
+                res_str += "UNK"
         return res_str
 
     def id2str_v2(self, ids, escape_special_ids=True, end_ids=[], **kwargs):
@@ -225,7 +225,7 @@ class DATrie:
                 res_str += rstr
             else:
                 print("ERROR unknown id %d" % rid)
-                res_str += "[UNK]"
+                res_str += "UNK"
         return res_str
 
 
@@ -237,10 +237,10 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
             self,
             vocab_file,
             errors="replace",
-            unk_token="[UNK]",
-            bos_token="[0]",
-            eos_token="[EOS, 0]",
-            pad_token="[PAD]",
+            unk_token="UNK",
+            bos_token="0",
+            eos_token="0",
+            pad_token="PAD",
             add_bos_token=False,
             **kwargs
     ):
