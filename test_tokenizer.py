@@ -1,11 +1,11 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from rwkv_tokenizer import TRIE_TOKENIZER
-token_path = "/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer"
+tokenizer_file_path = "/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer"
 
 origin_tokenizer = TRIE_TOKENIZER('/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_vocab_v20230424.txt')
 
 from transformers import AutoTokenizer
-hf_tokenizer = AutoTokenizer.from_pretrained(token_path, trust_remote_code=True)
+hf_tokenizer = AutoTokenizer.from_pretrained(tokenizer_file_path, trust_remote_code=True)
 
 # test encoder
 assert hf_tokenizer("Hello")['input_ids'] == origin_tokenizer.encode('Hello')
