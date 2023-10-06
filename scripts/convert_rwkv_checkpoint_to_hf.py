@@ -89,7 +89,7 @@ def convert_rwkv_checkpoint_to_hf_format(
     else:
         if is_world_tokenizer:
             tokenizer = AutoTokenizer.from_pretrained(tokenizer_file, trust_remote_code=True)
-            vocab_size = 65529
+            vocab_size = 65536
         else:
             tokenizer = PreTrainedTokenizerFast(tokenizer_file=tokenizer_file)
             vocab_size = len(tokenizer)
