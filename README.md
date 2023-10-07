@@ -79,7 +79,28 @@ Question: In a shocking finding, scientist discovered a herd of dragons living i
 Answer: The researchers discovered a mysterious finding in a remote, undisclosed valley, in a remote, undisclosed valley.
 ```
 
+#### GPU
 
+```python
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
+model = AutoModelForCausalLM.from_pretrained("/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv4-world4-0.1b-model/", torch_dtype=torch.float16).to(0)
+tokenizer = AutoTokenizer.from_pretrained("/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv4-world4-0.1b-model/", trust_remote_code=True)
 
+text = "你叫什么名字？"
+prompt = f'Question: {text.strip()}\n\nAnswer:'
+
+inputs = tokenizer(prompt, return_tensors="pt").to(0)
+output = model.generate(inputs["input_ids"], max_new_tokens=40)
+print(tokenizer.decode(output[0].tolist(), skip_special_tokens=True))
+```
+
+output:
+
+```shell
+Question: 你叫什么名字？
+
+Answer: 我是一个人工智能语言模型，没有具体的身份或者特征，也没有能力进行人类的任何任务
+```
 
