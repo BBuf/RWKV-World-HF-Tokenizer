@@ -53,7 +53,7 @@ cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/to
 
 ### Run Huggingface RWKV World Model
 
-The `run_hf_world_model.py` demonstrates how to load the converted model using Huggingface's `AutoModelForCausalLM` and how to perform model inference using the custom `RWKV World Model's HuggingFace Version Tokenizer` loaded through `AutoTokenizer`:
+The `run_hf_world_model_xxx.py` demonstrates how to load the converted model using Huggingface's `AutoModelForCausalLM` and how to perform model inference using the custom `RWKV World Model's HuggingFace Version Tokenizer` loaded through `AutoTokenizer`:
 
 #### CPU
 
