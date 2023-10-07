@@ -208,6 +208,8 @@ class DATrie:
                     continue
                 rstr = self.r_data[rid]
                 res_str += rstr
+            elif rid == 0:
+                break
             else:
                 print("ERROR unknown id %d" % rid)
                 res_str += "UNK"
@@ -223,6 +225,8 @@ class DATrie:
                 if escape_special_ids and rid in self.special_ids:
                     continue
                 res_str += rstr
+            elif rid == 0:
+                break
             else:
                 print("ERROR unknown id %d" % rid)
                 res_str += "UNK"
@@ -237,27 +241,13 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
             self,
             vocab_file,
             errors="replace",
-            unk_token="0",
-            bos_token="0",
-            eos_token="0",
-            pad_token="0",
-            add_bos_token=False,
             **kwargs
     ):
-        bos_token = AddedToken(bos_token, lstrip=False, rstrip=False) if isinstance(bos_token, str) else bos_token
-        eos_token = AddedToken(eos_token, lstrip=False, rstrip=False) if isinstance(eos_token, str) else eos_token
-        unk_token = AddedToken(unk_token, lstrip=False, rstrip=False) if isinstance(unk_token, str) else unk_token
-        pad_token = AddedToken(pad_token, lstrip=False, rstrip=False) if isinstance(pad_token, str) else pad_token
+        self.add_bos_token = False
         super().__init__(
             errors=errors,
-            unk_token=unk_token,
-            bos_token=bos_token,
-            eos_token=eos_token,
-            pad_token=pad_token,
-            add_bos_token=add_bos_token,
             **kwargs,
         )
-        self.add_bos_token = add_bos_token
 
         with open(vocab_file, encoding="utf-8") as vocab_handle:
             self.encoder = json.load(vocab_handle)

@@ -9,20 +9,20 @@ result = {}
 pattern = r"(\d+)\s+(['\"])(.*?)\2\s+(\d+)"
 
 # 读取文本文件
-with open('/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_vocab_v20230424.txt', 'r', encoding='utf-8') as f:
-    for line in f:
-        match = re.match(pattern, line)
-        if match:
-            value, _, key, _ = match.groups()
-            result[key] = int(value)
-        else:
-            parts = line.split(' ', 2)
-            value = int(parts[0])
-            key = str(parts[1])
-            result[key] = int(value)
+with open("/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_vocab_v20230424.txt", "r", encoding="utf-8") as f:
+    lines = f.readlines()
 
+for l in lines:
+    idx = int(l[:l.index(' ')])
+    x = eval(l[l.index(' '):l.rindex(' ')])
+    x = x.encode("utf-8") if isinstance(x, str) else x
+    assert isinstance(x, bytes)
+    assert len(x) == int(l[l.rindex(' '):])
+    result[x.decode('utf-8',  errors='ignore')] = idx  # 将bytes转换为str
+
+print(result)
 # 使用json模块保存字典为json文件
-with open('/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_vocab_v20230424.json', 'w', encoding='utf-8') as f:
-    json.dump(result, f, ensure_ascii=False, indent=4)
+with open('/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/rwkv_vocab_v20230424.json', 'w', encoding='utf-8') as f:
+    json.dump(result, f, indent=4)
 
 print("Conversion completed!")

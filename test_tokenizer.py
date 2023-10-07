@@ -13,6 +13,7 @@ assert hf_tokenizer("S:2")['input_ids'] == origin_tokenizer.encode('S:2')
 assert hf_tokenizer("Made in China")['input_ids'] == origin_tokenizer.encode('Made in China')
 assert hf_tokenizer("今天天气不错")['input_ids'] == origin_tokenizer.encode('今天天气不错')
 assert hf_tokenizer("男：听说你们公司要派你去南方工作?")['input_ids'] == origin_tokenizer.encode('男：听说你们公司要派你去南方工作?')
+assert hf_tokenizer("Pré")['input_ids'] == origin_tokenizer.encode('Pré')
 
 # test decoder
 assert hf_tokenizer.decode(hf_tokenizer("Hello")['input_ids']) == 'Hello'

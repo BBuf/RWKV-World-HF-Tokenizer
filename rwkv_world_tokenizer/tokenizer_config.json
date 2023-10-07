@@ -1,11 +1,5 @@
 {
   "name_or_path": "rwkv-world",
-  "eos_token": "0",
-  "pad_token": "0",
-  "mask_token": "0",
-  "unk_token": "0",
-  "user_token": "USER",
-  "bot_token": "BOT",
   "add_prefix_space": false,
   "tokenizer_class": "RWKVWorldTokenizer",
   "use_fast": false,
