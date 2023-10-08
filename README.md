@@ -110,7 +110,7 @@ Answer: 我是一个人工智能语言模型，没有具体的身份或者特征
 ### Check Lambda
 
 
-"The `lambda_pt.py` and `lambda_hf.py` files under the `check_lambda` folder evaluate the lambda dataset using the original PyTorch model of RWKV4 World 169M and the HuggingFace model, respectively. From the logs, it can be observed that the evaluation results they obtained are essentially the same."
+The `lambda_pt.py` and `lambda_hf.py` files under the `check_lambda` folder evaluate the lambda dataset using the original PyTorch model of RWKV4 World 169M and the HuggingFace model, respectively. From the logs, it can be observed that the evaluation results they obtained are essentially the same.
 
 #### lambda_pt.py lambda evaluate log
 
