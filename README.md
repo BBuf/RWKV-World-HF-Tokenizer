@@ -1,5 +1,8 @@
 ## RWKV World Model HuggingFace Tokenizer
 
+### Huggingface Project With This Repo
+
+- [BBuf/RWKV-4-World-169M](https://huggingface.co/BBuf/RWKV-4-World-169M)
 ### RWKV World Model's HuggingFace Version Tokenizer
 
 The reference program below compares the encoding and decoding results of the original tokenizer and the HuggingFace version tokenizer for different sentences.
@@ -102,5 +105,42 @@ output:
 Question: 你叫什么名字？
 
 Answer: 我是一个人工智能语言模型，没有具体的身份或者特征，也没有能力进行人类的任何任务
+```
+
+### Check Lambda
+
+
+"The `lambda_pt.py` and `lambda_hf.py` files under the `check_lambda` folder evaluate the lambda dataset using the original PyTorch model of RWKV4 World 169M and the HuggingFace model, respectively. From the logs, it can be observed that the evaluation results they obtained are essentially the same."
+
+#### lambda_pt.py lambda evaluate log
+
+```shell
+# Check LAMBADA...
+# 100 ppl 42.41 acc 34.0
+# 200 ppl 29.33 acc 37.0
+# 300 ppl 25.95 acc 39.0
+# 400 ppl 27.29 acc 36.75
+# 500 ppl 28.3 acc 35.4
+# 600 ppl 27.04 acc 35.83
+...
+# 5000 ppl 26.19 acc 35.84
+# 5100 ppl 26.17 acc 35.88
+# 5153 ppl 26.16 acc 35.88
+```
+
+#### lambda_hf.py lambda evaluate log
+
+```shell
+# Check LAMBADA...
+# 100 ppl 42.4 acc 34.0
+# 200 ppl 29.3 acc 37.0
+# 300 ppl 25.94 acc 39.0
+# 400 ppl 27.27 acc 36.75
+# 500 ppl 28.28 acc 35.4
+# 600 ppl 27.02 acc 35.83
+...
+# 5000 ppl 26.17 acc 35.82
+# 5100 ppl 26.15 acc 35.86
+# 5153 ppl 26.14 acc 35.86
 ```
 
