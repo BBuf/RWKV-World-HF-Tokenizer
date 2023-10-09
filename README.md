@@ -2,7 +2,13 @@
 
 ### Huggingface Project With This Repo
 
+> When uploading the converted model to Huggingface, if the bin file is too large, you need to use this command `transformers-cli lfs-enable-largefiles` to lift the size limit.
+
 - [BBuf/RWKV-4-World-169M](https://huggingface.co/BBuf/RWKV-4-World-169M)
+- [BBuf/RWKV-4-World-430M](https://huggingface.co/BBuf/RWKV-4-World-430M)
+- [BBuf/RWKV-4-World-1B5](https://huggingface.co/BBuf/RWKV-4-World-1B5)
+- [BBuf/RWKV-4-World-3B](https://huggingface.co/BBuf/RWKV-4-World-3B)
+- [BBuf/RWKV-4-World-7B](https://huggingface.co/BBuf/RWKV-4-World-7B)
 ### RWKV World Model's HuggingFace Version Tokenizer
 
 The reference program below compares the encoding and decoding results of the original tokenizer and the HuggingFace version tokenizer for different sentences.

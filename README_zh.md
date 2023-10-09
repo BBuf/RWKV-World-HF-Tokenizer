@@ -2,7 +2,13 @@
 
 ### 使用此仓库的Huggingface项目
 
+> 上传转换后的模型到Huggingface上时，如果bin文件太大需要使用这个指令 `transformers-cli lfs-enable-largefiles` 解除大小限制.
+
 - [BBuf/RWKV-4-World-169M](https://huggingface.co/BBuf/RWKV-4-World-169M)
+- [BBuf/RWKV-4-World-430M](https://huggingface.co/BBuf/RWKV-4-World-430M)
+- [BBuf/RWKV-4-World-1B5](https://huggingface.co/BBuf/RWKV-4-World-1B5)
+- [BBuf/RWKV-4-World-3B](https://huggingface.co/BBuf/RWKV-4-World-3B)
+- [BBuf/RWKV-4-World-7B](https://huggingface.co/BBuf/RWKV-4-World-7B)
 
 ### RWKV World模型的HuggingFace版本的Tokenizer
 
