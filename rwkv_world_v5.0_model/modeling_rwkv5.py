@@ -493,7 +493,7 @@ class RwkvModel(RwkvPreTrainedModel):
             # https://github.com/BlinkDL/ChatRWKV/blob/main/rwkv_pip_package/src/rwkv/model.py#L904-L906
             state = []
             state.append(torch.zeros((inputs_embeds.size(0), self.config.hidden_size, self.config.num_hidden_layers), dtype=inputs_embeds.dtype, requires_grad=False, device=inputs_embeds.device).contiguous())
-            state.append(torch.zeros((inputs_embeds.size(0), self.config.num_attention_heads, self.config.hidden_size // self.config.num_attention_heads, self.config.hidden_size // self.config.num_attention_heads, self.config.num_hidden_layers), dtype=inputs_embeds.dtype, requires_grad=False, device=inputs_embeds.device).contiguous())
+            state.append(torch.zeros((inputs_embeds.size(0), self.config.num_attention_heads, self.config.hidden_size // self.config.num_attention_heads, self.config.hidden_size // self.config.num_attention_heads, self.config.num_hidden_layers), dtype=torch.float32, requires_grad=False, device=inputs_embeds.device).contiguous())
             state.append(torch.zeros((inputs_embeds.size(0), self.config.hidden_size, self.config.num_hidden_layers), dtype=inputs_embeds.dtype, requires_grad=False, device=inputs_embeds.device).contiguous())
 
 
