@@ -45,7 +45,8 @@ for d in todo:
     correct = True
     # 使用模型进行前向传播
     input_tensor = torch.tensor(src + dst).unsqueeze(0).to(0)
-    out = model(input_tensor).logits
+    with torch.no_grad():
+        out = model(input_tensor).logits
 
     out = out.squeeze(0)
     for i in range(len(dst)):
