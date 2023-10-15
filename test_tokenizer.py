@@ -22,3 +22,4 @@ assert hf_tokenizer.decode(hf_tokenizer("Made in China")['input_ids']) == 'Made 
 assert hf_tokenizer.decode(hf_tokenizer("今天天气不错")['input_ids']) == '今天天气不错'
 assert hf_tokenizer.decode(hf_tokenizer("男：听说你们公司要派你去南方工作?")['input_ids']) == '男：听说你们公司要派你去南方工作?'
 
+print("test passed!")

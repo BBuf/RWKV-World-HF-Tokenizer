@@ -59,6 +59,39 @@ cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/to
 cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenizer_config.json ../rwkv4-world4-0.1b-model/
 ```
 
+使用脚本 `scripts/convert_rwkv5_world_model_to_hf.sh`，将来自 huggingface `BlinkDL/rwkv-5-world` 项目的 PyTorch 格式模型转换为 Huggingface 格式。在这里，我们以 0.1B 为例。
+
+```shell
+#!/bin/bash
+set -x
+
+cd scripts
+python convert_rwkv5_checkpoint_to_hf.py --repo_id BlinkDL/rwkv-5-world \
+ --checkpoint_file RWKV-5-World-0.1B-v1-20230803-ctx4096.pth \
+ --output_dir ../rwkv5-world-169m-model/ \
+ --tokenizer_file /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer \
+ --size 169M \
+ --is_world_tokenizer True
+
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5.0_model/configuration_rwkv5.py ../rwkv5-world-169m-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5.0_model/modeling_rwkv5.py ../rwkv5-world-169m-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/rwkv_vocab_v20230424.json ../rwkv5-world-169m-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenization_rwkv_world.py ../rwkv5-world-169m-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenizer_config.json ../rwkv5-world-169m-model/
+```
+
+另外，您需要在生成文件夹中的 `config.json` 文件开头添加以下几行：
+
+```json
+"architectures": [
+    "RwkvForCausalLM"
+],
+"auto_map": {
+    "AutoConfig": "configuration_rwkv5.Rwkv5Config",
+    "AutoModelForCausalLM": "modeling_rwkv5.RwkvForCausalLM"
+},
+```
+
 ### 运行Huggingface的RWKV World模型
 
 `run_hf_world_model_xxx.py`演示了如何使用Huggingface的`AutoModelForCausalLM`加载转换后的模型，以及如何使用通过`AutoTokenizer`加载的自定义`RWKV World模型的HuggingFace版本的Tokenizer`进行模型推断：
