@@ -4,11 +4,12 @@
 
 > When uploading the converted model to Huggingface, if the bin file is too large, you need to use this command `transformers-cli lfs-enable-largefiles` to lift the size limit.
 
-- [BBuf/RWKV-4-World-169M](https://huggingface.co/BBuf/RWKV-4-World-169M)
-- [BBuf/RWKV-4-World-430M](https://huggingface.co/BBuf/RWKV-4-World-430M)
-- [BBuf/RWKV-4-World-1B5](https://huggingface.co/BBuf/RWKV-4-World-1B5)
-- [BBuf/RWKV-4-World-3B](https://huggingface.co/BBuf/RWKV-4-World-3B)
-- [BBuf/RWKV-4-World-7B](https://huggingface.co/BBuf/RWKV-4-World-7B)
+- [RWKV/rwkv-5-world-169m](https://huggingface.co/RWKV/rwkv-5-world-169m)
+- [RWKV/rwkv-4-world-169m](https://huggingface.co/RWKV/rwkv-4-world-169m)
+- [RWKV/rwkv-4-world-430m](https://huggingface.co/RWKV/rwkv-4-world-430m)
+- [RWKV/rwkv-4-world-1b5](https://huggingface.co/RWKV/rwkv-4-world-1b5)
+- [RWKV/rwkv-4-world-3b](https://huggingface.co/RWKV/rwkv-4-world-3b)
+- [RWKV/rwkv-4-world-7b](https://huggingface.co/RWKV/rwkv-4-world-7b)
 ### RWKV World Model's HuggingFace Version Tokenizer
 
 The reference program below compares the encoding and decoding results of the original tokenizer and the HuggingFace version tokenizer for different sentences.
@@ -182,3 +183,7 @@ The `lambda_pt.py` and `lambda_hf.py` files under the `check_lambda` folder eval
 # 5153 ppl 26.14 acc 35.86
 ```
 
+### Plan
+
+- [x] Support RWKV5.0 model.
+- [ ] Support RWKV5.2 model.

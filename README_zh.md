@@ -4,11 +4,12 @@
 
 > 上传转换后的模型到Huggingface上时，如果bin文件太大需要使用这个指令 `transformers-cli lfs-enable-largefiles` 解除大小限制.
 
-- [BBuf/RWKV-4-World-169M](https://huggingface.co/BBuf/RWKV-4-World-169M)
-- [BBuf/RWKV-4-World-430M](https://huggingface.co/BBuf/RWKV-4-World-430M)
-- [BBuf/RWKV-4-World-1B5](https://huggingface.co/BBuf/RWKV-4-World-1B5)
-- [BBuf/RWKV-4-World-3B](https://huggingface.co/BBuf/RWKV-4-World-3B)
-- [BBuf/RWKV-4-World-7B](https://huggingface.co/BBuf/RWKV-4-World-7B)
+- [RWKV/rwkv-5-world-169m](https://huggingface.co/RWKV/rwkv-5-world-169m)
+- [RWKV/rwkv-4-world-169m](https://huggingface.co/RWKV/rwkv-4-world-169m)
+- [RWKV/rwkv-4-world-430m](https://huggingface.co/RWKV/rwkv-4-world-430m)
+- [RWKV/rwkv-4-world-1b5](https://huggingface.co/RWKV/rwkv-4-world-1b5)
+- [RWKV/rwkv-4-world-3b](https://huggingface.co/RWKV/rwkv-4-world-3b)
+- [RWKV/rwkv-4-world-7b](https://huggingface.co/RWKV/rwkv-4-world-7b)
 
 ### RWKV World模型的HuggingFace版本的Tokenizer
 
@@ -182,3 +183,10 @@ Answer: 我是一个人工智能语言模型，没有具体的身份或者特征
 # 5100 ppl 26.15 acc 35.86
 # 5153 ppl 26.14 acc 35.86
 ```
+
+### 计划
+
+- [x] 支持 RWKV5.0 模型。
+- [ ] 支持 RWKV5.2 模型。
+
+
