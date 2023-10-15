@@ -244,13 +244,13 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
             **kwargs
     ):
         self.add_bos_token = False
+
+        with open(vocab_file, encoding="utf-8") as vocab_handle:
+            self.encoder = json.load(vocab_handle)
         super().__init__(
             errors=errors,
             **kwargs,
         )
-
-        with open(vocab_file, encoding="utf-8") as vocab_handle:
-            self.encoder = json.load(vocab_handle)
         self.decoder = {v: k for k, v in self.encoder.items()}
         self.trie = DATrie(self.all_special_ids)
         for k, v in self.encoder.items():
