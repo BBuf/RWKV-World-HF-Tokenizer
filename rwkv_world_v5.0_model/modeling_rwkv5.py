@@ -518,8 +518,6 @@ class RwkvModel(RwkvPreTrainedModel):
             if output_attentions:
                 all_self_attentions = all_self_attentions + (attentions,)
         
-        hidden_states = hidden_states[:,-1,:].unsqueeze(1) if seq_mode else hidden_states
-        
         hidden_states = self.ln_out(hidden_states)
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -622,7 +620,7 @@ class RwkvForCausalLM(RwkvPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        last_hidden_state = rwkv_outputs. last_hidden_state
+        last_hidden_state = rwkv_outputs.last_hidden_state
         state = rwkv_outputs.state
 
         logits = self.head(last_hidden_state)
