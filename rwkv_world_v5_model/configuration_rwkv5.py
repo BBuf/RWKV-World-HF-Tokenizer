@@ -94,7 +94,6 @@ class Rwkv5Config(PretrainedConfig):
         hidden_size=768,
         num_hidden_layers=24,
         attention_hidden_size=None,
-        num_attention_heads=12,
         head_size=64,
         intermediate_size=None,
         layer_norm_epsilon=1e-5,
@@ -103,6 +102,7 @@ class Rwkv5Config(PretrainedConfig):
         rescale_every=6,
         tie_word_embeddings=False,
         use_cache=True,
+        model_version="5_2",
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -110,15 +110,15 @@ class Rwkv5Config(PretrainedConfig):
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.attention_hidden_size = attention_hidden_size if attention_hidden_size is not None else hidden_size
-        self.num_attention_heads = num_attention_heads
         self.head_size = head_size
-        self.intermediate_size = intermediate_size if intermediate_size is not None else 4 * hidden_size
+        self.intermediate_size = None
         self.layer_norm_epsilon = layer_norm_epsilon
         self.rescale_every = rescale_every
         self.use_cache = use_cache
 
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id
+        self.model_version = model_version
 
         super().__init__(
             tie_word_embeddings=tie_word_embeddings, bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs

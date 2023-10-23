@@ -47,7 +47,6 @@ HIDEN_SIZE_MAPPING = {
     "14B": 5120,
 }
 
-
 def convert_state_dict(state_dict):
     state_dict_keys = list(state_dict.keys())
     for name in state_dict_keys:
@@ -68,9 +67,12 @@ def convert_state_dict(state_dict):
         # time_mix_v -> time_mix_value and reshape
         if name.endswith(".time_mix_v"):
             name = name.replace(".time_mix_v", ".time_mix_value")
-        # time_mix_r -> time_mix_key and reshape
+        # time_mix_r -> time_mix_receptance and reshape
         if name.endswith(".time_mix_r"):
             name = name.replace(".time_mix_r", ".time_mix_receptance")
+        # time_mix_g -> time_mix_gate and reshape
+        if name.endswith(".time_mix_g"):
+            name = name.replace(".time_mix_g", ".time_mix_gate")
 
         if name != "head.weight":
             name = "rwkv." + name
@@ -80,7 +82,7 @@ def convert_state_dict(state_dict):
 
 
 def convert_rwkv_checkpoint_to_hf_format(
-    repo_id, checkpoint_file, output_dir, size=None, tokenizer_file=None, push_to_hub=False, model_name=None, is_world_tokenizer=False
+    repo_id, checkpoint_file, output_dir, size=None, tokenizer_file=None, push_to_hub=False, model_name=None, is_world_tokenizer=False, model_version="5_2",
 ):
     # 1. If possible, build the tokenizer.
     if tokenizer_file is None:
@@ -113,6 +115,7 @@ def convert_rwkv_checkpoint_to_hf_format(
         vocab_size=vocab_size,
         num_hidden_layers=NUM_HIDDEN_LAYERS_MAPPING[size],
         hidden_size=HIDEN_SIZE_MAPPING[size],
+        model_version=model_version,
     )
     config.save_pretrained(output_dir)
 
@@ -197,6 +200,12 @@ if __name__ == "__main__":
         default=False,
         type=bool,
         help="use RWKV world series model tokenizer or normal tokenizer.")
+    parser.add_argument(
+        "--model_version",
+        default="5_2",
+        type=str,
+        help="model version of RWKV.",
+    )
 
     args = parser.parse_args()
     convert_rwkv_checkpoint_to_hf_format(
@@ -207,5 +216,6 @@ if __name__ == "__main__":
         tokenizer_file=args.tokenizer_file,
         push_to_hub=args.push_to_hub,
         model_name=args.model_name,
-        is_world_tokenizer=args.is_world_tokenizer
+        is_world_tokenizer=args.is_world_tokenizer,
+        model_version=args.model_version,
     )

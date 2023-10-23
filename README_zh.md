@@ -42,7 +42,7 @@ assert hf_tokenizer.decode(hf_tokenizer("男：听说你们公司要派你去南
 
 ### Huggingface RWKV World模型转换
 
-使用脚本`scripts/convert_rwkv_world_model_to_hf.sh`，将huggingface的`BlinkDL/rwkv-4-world`项目中的PyTorch格式模型转换为Huggingface格式。这里，我们以0.1B为例。
+使用脚本`scripts/convert_rwkv4_model_to_hf.sh`，将huggingface的`BlinkDL/rwkv-4-world`项目中的PyTorch格式模型转换为Huggingface格式。这里，我们以0.1B为例。
 
 ```shell
 #!/bin/bash
@@ -60,7 +60,7 @@ cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/to
 cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenizer_config.json ../rwkv4-world4-0.1b-model/
 ```
 
-使用脚本 `scripts/convert_rwkv5_world_model_to_hf.sh`，将来自 huggingface `BlinkDL/rwkv-5-world` 项目的 PyTorch 格式模型转换为 Huggingface 格式。在这里，我们以 0.1B 为例。
+使用脚本 `scripts/convert_rwkv5_world_model_to_hf.sh`，将来自 huggingface `BlinkDL/rwkv-5-world` 项目的 PyTorch 格式模型转换为 Huggingface 格式。在这里，我们以 3B 为例。
 
 ```shell
 #!/bin/bash
@@ -68,17 +68,18 @@ set -x
 
 cd scripts
 python convert_rwkv5_checkpoint_to_hf.py --repo_id BlinkDL/rwkv-5-world \
- --checkpoint_file RWKV-5-World-0.1B-v1-20230803-ctx4096.pth \
- --output_dir ../rwkv5-world-169m-model/ \
+ --checkpoint_file RWKV-5-World-3B-v2-OnlyForTest_14%_trained-20231006-ctx4096.pth \
+ --output_dir ../rwkv5-v2-world-3b-model/ \
  --tokenizer_file /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer \
- --size 169M \
- --is_world_tokenizer True
+ --size 3B \
+ --is_world_tokenizer True \
+ --model_version "5_2"
 
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5.0_model/configuration_rwkv5.py ../rwkv5-world-169m-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5.0_model/modeling_rwkv5.py ../rwkv5-world-169m-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/rwkv_vocab_v20230424.json ../rwkv5-world-169m-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenization_rwkv_world.py ../rwkv5-world-169m-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenizer_config.json ../rwkv5-world-169m-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/rwkv_vocab_v20230424.json ../rwkv5-v2-world-3b-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenization_rwkv_world.py ../rwkv5-v2-world-3b-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenizer_config.json ../rwkv5-v2-world-3b-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model/configuration_rwkv5.py ../rwkv5-v2-world-3b-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model/modeling_rwkv5.py ../rwkv5-v2-world-3b-model/
 ```
 
 另外，您需要在生成文件夹中的 `config.json` 文件开头添加以下几行：
