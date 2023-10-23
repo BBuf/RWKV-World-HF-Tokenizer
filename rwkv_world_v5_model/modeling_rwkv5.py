@@ -329,6 +329,80 @@ class RwkvPreTrainedModel(PreTrainedModel):
     _no_split_modules = ["RwkvBlock"]
     _keep_in_fp32_modules = ["time_decay", "time_first"]
 
+    def _init_weights(self, module):
+        """Initialize the weights."""
+        if isinstance(module, RwkvSelfAttention):
+            layer_id = module.layer_id
+            num_hidden_layers = module.config.num_hidden_layers
+            hidden_size = module.config.hidden_size
+            attention_hidden_size = module.attention_hidden_size
+            num_attention_heads = hidden_size // module.config.head_size
+
+            ratio_0_to_1 = layer_id / (num_hidden_layers - 1)  # 0 to 1
+            ratio_1_to_almost0 = 1.0 - (layer_id / num_hidden_layers)  # 1 to ~0
+
+            time_weight = torch.tensor(
+                [i / hidden_size for i in range(hidden_size)],
+                dtype=module.time_mix_key.dtype,
+                device=module.time_mix_key.device,
+            )
+            time_weight = time_weight[None, None, :]
+
+            if module.config.model_version == "5_2":
+                # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L398
+                decay_speed = [
+                    -6.0 + 5.0 * (h / (attention_hidden_size - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
+                    for h in range(attention_hidden_size)
+                ]
+            else:
+                # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L172
+                decay_speed = [
+                    -6.0 + 5.0 * (h / (num_attention_heads - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
+                    for h in range(num_attention_heads)
+                ]
+            decay_speed = torch.tensor(decay_speed, dtype=module.time_decay.dtype, device=module.time_decay.device)
+            if module.config.model_version == "5_2":
+                tmp = (
+                    torch.tensor(
+                        [(1.0 - (i / (attention_hidden_size - 1.0))) * ratio_0_to_1 + 0.1 * ((i + 1) % 3 - 1) for i in range(attention_hidden_size)],
+                        dtype=module.time_faaaa.dtype,
+                        device=module.time_faaaa.device,
+                    )
+                )
+            else:
+                tmp = torch.ones(num_attention_heads) * (-3.0)
+
+            with torch.no_grad():
+                if module.config.model_version == "5_2":
+                    module.time_decay.data = decay_speed.reshape(num_attention_heads, module.config.head_size)
+                    module.time_faaaa.data = tmp.reshape(num_attention_heads, module.config.head_size)
+                else:
+                    module.time_decay.data = decay_speed
+                    module.time_first.data = tmp
+
+                module.time_mix_key.data = torch.pow(time_weight, ratio_1_to_almost0)
+                module.time_mix_value.data = torch.pow(time_weight, ratio_1_to_almost0) + 0.3 * ratio_0_to_1
+                module.time_mix_receptance.data = torch.pow(time_weight, 0.5 * ratio_1_to_almost0)
+                if module.config.model_version == "5_2":
+                    module.time_mix_gate.data = torch.pow(time_weight, 0.5 * ratio_1_to_almost0)
+        elif isinstance(module, RwkvFeedForward):
+            layer_id = module.layer_id
+            num_hidden_layers = module.config.num_hidden_layers
+            hidden_size = module.config.hidden_size
+
+            ratio_1_to_almost0 = 1.0 - (layer_id / num_hidden_layers)  # 1 to ~0
+
+            time_weight = torch.tensor(
+                [i / hidden_size for i in range(hidden_size)],
+                dtype=module.time_mix_key.dtype,
+                device=module.time_mix_key.device,
+            )
+            time_weight = time_weight[None, None, :]
+
+            with torch.no_grad():
+                module.time_mix_key.data = torch.pow(time_weight, ratio_1_to_almost0)
+                module.time_mix_receptance.data = torch.pow(time_weight, ratio_1_to_almost0)
+
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, RwkvModel):
             module.gradient_checkpointing = value
