@@ -48,6 +48,42 @@ RWKV_PRETRAINED_MODEL_ARCHIVE_LIST = [
     
 ]
 
+rwkv5_cuda_kernel = None
+
+def load_wkv5_cuda_kernel(config):
+    global rwkv5_cuda_kernel
+    if config.model_version == "5_2" and torch.cuda.is_available():
+        HEAD_SIZE = args.attention_hidden_size // args.head_size
+        rwkv5_cuda_kernel = load(name="rwkv5", sources=[f"{current_path}/rwkv5_op.cpp", f"{current_path}/rwkv5.cu"],
+            verbose=True, extra_cuda_cflags=["-res-usage", "--use_fast_math", "-O3", "-Xptxas -O3" if os.name != "nt" else "", "--extra-device-vectorization", f"-D_N_={HEAD_SIZE}"])
+
+class RWKV_5(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, B, T, C, H, state, r, k, v, w, u):
+        with torch.no_grad():
+            assert HEAD_SIZE == C // H
+            ctx.B = B
+            ctx.T = T
+            ctx.C = C
+            ctx.H = H
+            assert state.dtype == torch.float32
+            assert w.dtype == torch.float32
+            assert r.is_contiguous()
+            assert k.is_contiguous()
+            assert v.is_contiguous()
+            assert w.is_contiguous()                            
+            assert u.is_contiguous()                            
+            assert state.is_contiguous()
+
+            y = torch.empty((B, T, C), device=w.device, dtype=r.dtype, memory_format=torch.contiguous_format)
+            if r.dtype == torch.bfloat16:
+                rwkv5_cuda_kernel.forward_bf16(B, T, C, H, state, r, k, v, w, u, y)
+            elif r.dtype == torch.float16:
+                rwkv5_cuda_kernel.forward_fp16(B, T, C, H, state, r, k, v, w, u, y)
+            elif r.dtype == torch.float32:
+                rwkv5_cuda_kernel.forward_fp32(B, T, C, H, state, r, k, v, w, u, y)
+            return y, state
+
 def rwkv_linear_attention_v5_0(H, S, T, hidden, time_decay, time_first, receptance, key, value, lxw, lxb, ow, state, return_state=False, seq_mode=True):
     time_decay = torch.exp(-torch.exp(time_decay.float())).reshape(-1,1,1)
     time_first = torch.exp(time_first.float()).reshape(-1,1,1)
@@ -114,13 +150,17 @@ def rwkv_linear_attention_v5_2(H, S, T, n_head, hidden, time_decay, time_first, 
         out = out @ ow
 
     return out, state
-
-
 class RwkvSelfAttention(nn.Module):
     def __init__(self, config, layer_id=0):
         super().__init__()
         self.config = config
         self.layer_id = layer_id
+        kernel_loaded = rwkv_cuda_kernel is not None
+        if torch.cuda.is_available() and not kernel_loaded:
+            try:
+                load_wkv5_cuda_kernel(config)
+            except Exception:
+                logger.info("Could not load the custom CUDA kernel for RWKV5 attention.")
         hidden_size = config.hidden_size
         # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L146
         num_attention_heads = hidden_size // config.head_size
