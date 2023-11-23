@@ -121,7 +121,7 @@ def rwkv_linear_attention_v5_0(H, S, T, hidden, time_decay, time_first, receptan
 
     return out, state
 
-def rwkv_linear_attention_v5_2(H, S, T, n_head, hidden, time_decay, time_first, receptance, key, value, gate, lxw, lxb, ow, state, return_state=False, seq_mode=True):
+def rwkv_linear_attention_v5_2_cpu(H, S, T, n_head, hidden, time_decay, time_first, receptance, key, value, gate, lxw, lxb, ow, state, return_state=False, seq_mode=True):
     time_decay = torch.exp(-torch.exp(time_decay.float())).reshape(-1,1,1).reshape(n_head, -1, 1)
     time_first = time_first.float().reshape(-1,1,1).reshape(n_head, -1, 1)
     lxw = lxw.float()
@@ -155,42 +155,42 @@ class RwkvSelfAttention(nn.Module):
         super().__init__()
         self.config = config
         self.layer_id = layer_id
-        kernel_loaded = rwkv_cuda_kernel is not None
+        kernel_loaded = rwkv5_cuda_kernel is not None
         if torch.cuda.is_available() and not kernel_loaded:
             try:
                 load_wkv5_cuda_kernel(config)
             except Exception:
                 logger.info("Could not load the custom CUDA kernel for RWKV5 attention.")
-        hidden_size = config.hidden_size
+        self.hidden_size = config.hidden_size
         # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L146
         num_attention_heads = hidden_size // config.head_size
         self.num_attention_heads = num_attention_heads
         attention_hidden_size = (
-            config.attention_hidden_size if config.attention_hidden_size is not None else hidden_size
+            config.attention_hidden_size if config.attention_hidden_size is not None else self.hidden_size
         )
         self.attention_hidden_size = attention_hidden_size
 
         if self.config.model_version == "5_2":
             self.time_decay = nn.Parameter(torch.empty(num_attention_heads, config.head_size))
             self.time_faaaa = nn.Parameter(torch.empty(num_attention_heads, config.head_size))
-            self.time_mix_gate = nn.Parameter(torch.empty(1, 1, hidden_size))
+            self.time_mix_gate = nn.Parameter(torch.empty(1, 1, self.hidden_size))
         else:
             self.time_decay = nn.Parameter(torch.empty(num_attention_heads))
             self.time_first = nn.Parameter(torch.empty(num_attention_heads))
 
-        self.time_mix_key = nn.Parameter(torch.empty(1, 1, hidden_size))
-        self.time_mix_value = nn.Parameter(torch.empty(1, 1, hidden_size))
-        self.time_mix_receptance = nn.Parameter(torch.empty(1, 1, hidden_size))
+        self.time_mix_key = nn.Parameter(torch.empty(1, 1, self.hidden_size))
+        self.time_mix_value = nn.Parameter(torch.empty(1, 1, self.hidden_size))
+        self.time_mix_receptance = nn.Parameter(torch.empty(1, 1, self.hidden_size))
 
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
-        self.key = nn.Linear(hidden_size, attention_hidden_size, bias=False)
-        self.value = nn.Linear(hidden_size, attention_hidden_size, bias=False)
-        self.receptance = nn.Linear(hidden_size, attention_hidden_size, bias=False)
+        self.key = nn.Linear(self.hidden_size, attention_hidden_size, bias=False)
+        self.value = nn.Linear(self.hidden_size, attention_hidden_size, bias=False)
+        self.receptance = nn.Linear(self.hidden_size, attention_hidden_size, bias=False)
         if self.config.model_version == "5_2":
-            self.gate = nn.Linear(hidden_size, attention_hidden_size, bias=False)
-        self.output = nn.Linear(attention_hidden_size, hidden_size, bias=False)
+            self.gate = nn.Linear(self.hidden_size, attention_hidden_size, bias=False)
+        self.output = nn.Linear(attention_hidden_size, self.hidden_size, bias=False)
         # https://github.com/BlinkDL/RWKV-LM/blob/3db37a72356b736966ddd377268f02b80963af3f/RWKV-v4neo/src/model.py#L190C1-L190C1
-        self.ln_x = nn.GroupNorm(hidden_size // config.head_size, hidden_size)
+        self.ln_x = nn.GroupNorm(self.hidden_size // config.head_size, self.hidden_size)
 
     # TODO: maybe jit, otherwise move inside forward
     def extract_key_value(self, H, S, T, hidden, state=None):
@@ -206,19 +206,18 @@ class RwkvSelfAttention(nn.Module):
         receptance = hidden * self.time_mix_receptance + shifted * (1 - self.time_mix_receptance)
         if self.config.model_version == "5_2":
             gate = hidden* self.time_mix_gate + shifted * (1 - self.time_mix_gate)
-
-        if hidden.size(1) == 1 and state is not None:
-            receptance = self.receptance(receptance).to(torch.float32).view(H, 1, S)
-            key = self.key(key).to(torch.float32).view(H, S, 1)
-            value = self.value(value).to(torch.float32).view(H, 1, S)
-        else:
-            # https://github.com/BlinkDL/ChatRWKV/blob/main/rwkv_pip_package/src/rwkv/model.py#L693
-            key = self.key(key).to(torch.float32).view(T, H, S).transpose(0, 1).transpose(-2, -1)
-            value = self.value(value).to(torch.float32).view(T, H, S).transpose(0, 1)
-            receptance = self.receptance(receptance).to(torch.float32).view(T, H, S).transpose(0, 1)
-
-        if self.config.model_version == "5_2":
             gate = F.silu(self.gate(gate))
+
+        if rwkv5_cuda_kernel is None:
+            if hidden.size(1) == 1 and state is not None:
+                receptance = self.receptance(receptance).to(torch.float32).view(H, 1, S)
+                key = self.key(key).to(torch.float32).view(H, S, 1)
+                value = self.value(value).to(torch.float32).view(H, 1, S)
+            else:
+                # https://github.com/BlinkDL/ChatRWKV/blob/main/rwkv_pip_package/src/rwkv/model.py#L693
+                key = self.key(key).to(torch.float32).view(T, H, S).transpose(0, 1).transpose(-2, -1)
+                value = self.value(value).to(torch.float32).view(T, H, S).transpose(0, 1)
+                receptance = self.receptance(receptance).to(torch.float32).view(T, H, S).transpose(0, 1)
 
         if state is not None:
             state[0][:, :, self.layer_id] = hidden[:, -1]
@@ -238,25 +237,34 @@ class RwkvSelfAttention(nn.Module):
             receptance, key, value, state = self.extract_key_value(H, S, T, hidden, state=state)
         layer_state = state[1][:, :, :, :, self.layer_id] if state is not None else None
         if self.config.model_version == "5_2":
-            rwkv, layer_state = rwkv_linear_attention_v5_2(
-            H,
-            S,
-            T,
-            self.num_attention_heads,
-            hidden,
-            self.time_decay,
-            self.time_faaaa,
-            receptance,
-            key,
-            value,
-            gate,
-            self.ln_x.weight,
-            self.ln_x.bias,
-            self.output.weight.t(),
-            state=layer_state,
-            return_state=use_cache,
-            seq_mode=seq_mode,
-        )
+            if rwkv5_cuda_kernel is not None and seq_mode:
+                rwkv, layer_state = RWKV_5.apply(1, T, self.hidden_size, H, layer_state.transpose(-1, -2).contiguous(), 
+                    receptance, key, value, self.time_decay, self.time_faaaa,)
+                layer_state = layer_state.transpose(-1,-2)
+                rwkv = rwkv.reshape(T, H*N)
+                rwkv = F.group_norm(rwkv, num_groups=H, weight=self.ln_x.weight, bias=self.ln_x.bias)
+                rwkv = rwkv.to(dtype=hidden.dtype) * gate
+                rwkv = rwkv @ self.output.weight.t()
+            else:
+                rwkv, layer_state = rwkv_linear_attention_v5_2_cpu(
+                    H,
+                    S,
+                    T,
+                    self.num_attention_heads,
+                    hidden,
+                    self.time_decay,
+                    self.time_faaaa,
+                    receptance,
+                    key,
+                    value,
+                    gate,
+                    self.ln_x.weight,
+                    self.ln_x.bias,
+                    self.output.weight.t(),
+                    state=layer_state,
+                    return_state=use_cache,
+                    seq_mode=seq_mode,
+                )
         else:
             rwkv, layer_state = rwkv_linear_attention_v5_0(
                 H,
