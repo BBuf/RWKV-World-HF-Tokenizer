@@ -15,3 +15,4 @@ cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/to
 cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenizer_config.json ../rwkv5-v2-world-3b-model/
 cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model/configuration_rwkv5.py ../rwkv5-v2-world-3b-model/
 cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model/modeling_rwkv5.py ../rwkv5-v2-world-3b-model/
+cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model/generation_config.json ../rwkv5-v2-world-3b-model/
