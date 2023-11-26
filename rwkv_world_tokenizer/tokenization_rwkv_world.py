@@ -52,186 +52,52 @@ if TYPE_CHECKING:
 logger = logging.get_logger(__name__)
 
 VOCAB_FILES_NAMES = {
-    "vocab_file": "rwkv_vocab_v20230424.json",
+    "vocab_file": "rwkv_vocab_v20230424.txt",
 }
 
+class TRIE:
+    __slots__ = tuple("ch,to,values,front".split(","))
+    to:list
+    values:set
+    def __init__(self, front=None, ch=None):
+        self.ch = ch
+        self.to = [None for ch in range(256)]
+        self.values = set()
+        self.front = front
 
-class DATrie:
-    class Node:
-        def __init__(self, is_leaf=False, leaf_data=None, tail=""):
-            self._is_leaf = is_leaf
-            self._leaf_data = leaf_data
-            self._tail = tail
-            self._next_map = {}
-
-        def is_leaf(self):
-            return self._is_leaf
-
-        def set_leaf(self):
-            self._is_leaf = True
-
-        def has_next(self, w):
-            if w in self._next_map:
-                return True
-            return False
-
-        def add_node(self, w, node):
-            self._next_map[w] = node
-
-        def get_node(self, w):
-            if w in self._next_map:
-                return self._next_map[w]
-            return None
-
-        def get_tail(self):
-            return self._tail
-
-        def get_data(self):
-            return self._leaf_data
-
-        def set_data(self, data):
-            self._leaf_data = data
-
-    def __init__(self, special_ids):
-        self.root = self.Node()
-        self.data = {}
-        self.r_data = {}
-        self.special_ids = special_ids
-
-    def insert(self, word, data):
-        self.data[word] = data
-        self.r_data[data] = word
-        idx = 0
-        node = self.root
-        while idx < len(word):
-            w = word[idx]
-            is_leaf = (idx == (len(word) - 1))
-            leaf_data = (data if is_leaf else None)
-            # 不存在则插入
-            if not node.has_next(w):
-                node.add_node(w, self.Node(is_leaf=is_leaf, leaf_data=leaf_data))
-                # last word
-            node = node.get_node(w)
+    def __repr__(self):
+        fr = self
+        ret = []
+        while(fr!=None):
+            if(fr.ch!=None):
+                ret.append(fr.ch)
+            fr = fr.front
+        return "<TRIE %s %s>"%(ret[::-1], self.values)
+    
+    def add(self, key:bytes, idx:int=0, val=None):
+        if(idx == len(key)):
+            if(val is None):
+                val = key
+            self.values.add(val)
+            return self
+        ch = key[idx]
+        if(self.to[ch] is None):
+            self.to[ch] = TRIE(front=self, ch=ch)
+        return self.to[ch].add(key, idx=idx+1, val=val)
+    
+    def find_longest(self, key:bytes, idx:int=0):
+        u:TRIE = self
+        ch:int = key[idx]
+        
+        while(u.to[ch] is not None):
+            u = u.to[ch]
             idx += 1
-        if not node.is_leaf():
-            node.set_leaf()
-            node.set_data(data)
-
-    def findStrict(self, word):
-        idx = 0
-        node = self.root
-        while node is not None and idx < len(word):
-            w = word[idx]
-            if not node.has_next(w):
-                return None
-                # last word
-            node = node.get_node(w)
-            idx += 1
-        if node.is_leaf():
-            return node.get_data()
-        return None
-
-    def prefix(self, word):
-        idx = 0
-        node = self.root
-        result = []
-        while node is not None and idx < len(word):
-            w = word[idx]
-            if not node.has_next(w):
-                return result
-                # last word
-            node = node.get_node(w)
-            if node.is_leaf():
-                result.append([word[:idx + 1], node.get_data()])
-            idx += 1
-        return result
-
-    def max_prefix(self, content, start_idx):
-        idx = start_idx
-        node = self.root
-        l = len(content)
-        result = [["", ], ]
-        while node is not None and idx < l:
-            w = content[idx]
-            if not node.has_next(w):
-                return result[-1]
-                # last word
-            node = node.get_node(w)
-            if node.is_leaf():
-                result.append([content[start_idx:idx + 1], node.get_data()])
-            idx += 1
-        return result[-1]
-
-    def max_score(self, content, start_idx):
-        idx = start_idx
-        node = self.root
-        l = len(content)
-        result = [["", (3, 0)], ]
-        while node is not None and idx < l:
-            w = content[idx]
-            if not node.has_next(w):
+            if(u.values):
+                ret = idx, u, u.values
+            if(idx==len(key)):
                 break
-                # last word
-            node = node.get_node(w)
-            if node.is_leaf():
-                result.append([content[start_idx:idx + 1], node.get_data()])
-            idx += 1
-        if len(result) > 1:
-            result = sorted(result, key=lambda x: x[1][1])
-        return result[-1]
-
-    def match(self, content, add_unk=True, unk_id=-1, **kwargs):
-        # length
-        l = len(content)
-        i = 0
-        result_list = []
-        while i < l:
-            match_word = self.max_prefix(content=content, start_idx=i)
-            # print(match_word)
-            w = match_word[0]
-            if len(w) > 0:
-                result_list.append(match_word[1])
-                i += len(w)
-            else:
-                if add_unk:
-                    result_list.append(unk_id)
-                i += 1
-        return result_list
-
-    def id2str(self, ids, escape_special_ids=True, end_ids=[], **kwargs):
-        res_str = ""
-        for rid in ids:
-            if rid in self.r_data:
-                if rid in end_ids:
-                    break
-                if escape_special_ids and rid in self.special_ids:
-                    continue
-                rstr = self.r_data[rid]
-                res_str += rstr
-            elif rid == 0:
-                break
-            else:
-                print("ERROR unknown id %d" % rid)
-                res_str += "UNK"
-        return res_str
-
-    def id2str_v2(self, ids, escape_special_ids=True, end_ids=[], **kwargs):
-        res_str = ""
-        for rid in ids:
-            if rid in self.r_data:
-                if rid in end_ids:
-                    break
-                rstr = self.r_data[rid]
-                if escape_special_ids and rid in self.special_ids:
-                    continue
-                res_str += rstr
-            elif rid == 0:
-                break
-            else:
-                print("ERROR unknown id %d" % rid)
-                res_str += "UNK"
-        return res_str
-
+            ch = key[idx]
+        return ret
 
 class RWKVWorldTokenizer(PreTrainedTokenizer):
     vocab_files_names = VOCAB_FILES_NAMES
@@ -244,17 +110,30 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
             **kwargs
     ):
         self.add_bos_token = False
+        self.encoder = {}
+        sorted = [] # must be already sorted
+        with open(vocab_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        for l in lines:
+            idx = int(l[:l.index(' ')])
+            x = eval(l[l.index(' '):l.rindex(' ')])
+            x = x.encode("utf-8") if isinstance(x, str) else x
+            assert isinstance(x, bytes)
+            assert len(x) == int(l[l.rindex(' '):])
+            sorted += [x]
+            self.encoder[idx] = x
 
-        with open(vocab_file, encoding="utf-8") as vocab_handle:
-            self.encoder = json.load(vocab_handle)
         super().__init__(
             errors=errors,
             **kwargs,
         )
-        self.decoder = {v: k for k, v in self.encoder.items()}
-        self.trie = DATrie(self.all_special_ids)
-        for k, v in self.encoder.items():
-            self.trie.insert(k, v)
+        self.decoder = {}
+        for k,v in self.encoder.items():
+            self.decoder[v] = int(k)
+
+        self.trie = TRIE()
+        for t, i in self.decoder.items():
+            _ = self.trie.add(t, val=(t, i))
         self.errors = errors  # how to handle errors in decoding
         self.cache = {}
 
@@ -311,9 +190,23 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
             return [1] + ([0] * len(token_ids_0))
         return [1] + ([0] * len(token_ids_0)) + [1] + ([0] * len(token_ids_1))
 
+    def encodeBytes(self, src:bytes):
+        idx:int = 0
+        tokens = []
+        while (idx < len(src)):
+            _idx:int = idx
+            idx, _, values = self.trie.find_longest(src, idx)
+            assert(idx != _idx)
+            _, token = next(iter(values))            
+            tokens.append(token)
+        return tokens
+    
+    def decodeBytes(self, tokens):
+        return b''.join(map(lambda i: self.encoder[i], tokens))
+
     def _tokenize(self, text, **kwargs):
         """Tokenize a string."""
-        return self.trie.match(text, unk_id=self.unk_token_id, **kwargs)
+        return self.encodeBytes(text.encode("utf-8"))
 
     def _decode(self,
                token_ids: Union[int, List[int], "np.ndarray", "torch.Tensor", "tf.Tensor"],
@@ -326,13 +219,9 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
         if isinstance(token_ids, int):
             if token_ids in self.all_special_ids and skip_special_tokens:
                 return ""
-            return self.decoder.get(token_ids, self.unk_token)
+            return self.encoder.get(token_ids, self.unk_token)
         elif isinstance(token_ids, list):
-            return self.trie.id2str(
-                token_ids,
-                escape_special_ids=skip_special_tokens,
-                **kwargs
-            )
+            return self.decodeBytes(token_ids).decode('utf-8')
         else:
             return token_ids
 
@@ -383,10 +272,10 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
     ) -> BatchEncoding:
         def get_input_ids(text):
             if isinstance(text, str):
-                text_id = self.trie.match(text, unk_id=self.unk_token_id)
+                text_id = self._tokenize(text)
                 return text_id
             elif isinstance(text, list) and len(text) > 0 and isinstance(text[0], str):
-                return [self.trie.match(t, unk_id=self.unk_token_id) for t in text]
+                return [self._tokenize(t) for t in text]
             elif isinstance(text, (list, tuple)) and len(text) > 0 and isinstance(text[0], int):
                 return text
             else:
@@ -448,10 +337,10 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
     ) -> BatchEncoding:
         def get_input_ids(text):
             if isinstance(text, str):
-                text_id = self.trie.match(text, unk_id=self.unk_token_id)
+                text_id = self._tokenize(text)
                 return text_id
             elif isinstance(text, list) and len(text) > 0 and isinstance(text[0], str):
-                return [self.trie.match(t, unk_id=self.unk_token_id) for t in text]
+                return [self._tokenize(t) for t in text]
             elif isinstance(text, (list, tuple)) and len(text) > 0 and isinstance(text[0], int):
                 return text
             else:
