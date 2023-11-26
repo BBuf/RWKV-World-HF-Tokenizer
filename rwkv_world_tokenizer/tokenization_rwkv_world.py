@@ -202,7 +202,8 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
         return tokens
     
     def decodeBytes(self, tokens):
-        return b''.join(map(lambda i: self.encoder[i], tokens))
+        byte_sequence = [self.encoder[i] for i in tokens if i != 0]
+        return b''.join(byte_sequence)
 
     def _tokenize(self, text, **kwargs):
         """Tokenize a string."""
