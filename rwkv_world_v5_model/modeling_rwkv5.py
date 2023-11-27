@@ -614,9 +614,6 @@ class RwkvModel(RwkvPreTrainedModel):
             if output_attentions:
                 all_self_attentions = all_self_attentions + (attentions,)
 
-        if self.config.model_version == "5_2" and seq_mode:
-            hidden_states = hidden_states[:, -1, :].unsqueeze(1)
-
         hidden_states = self.ln_out(hidden_states)
 
         if output_hidden_states:
