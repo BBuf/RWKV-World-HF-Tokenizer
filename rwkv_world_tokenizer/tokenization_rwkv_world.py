@@ -202,12 +202,17 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
         return tokens
     
     def decodeBytes(self, tokens):
-        byte_sequence = [self.encoder[i] for i in tokens if i != 0]
-        return b''.join(byte_sequence)
+        return b''.join(map(lambda i: self.encoder[i], tokens))
 
     def _tokenize(self, text, **kwargs):
         """Tokenize a string."""
         return self.encodeBytes(text.encode("utf-8"))
+
+    def _decode_tokens(self, tokens):
+        try:
+            return self.decodeBytes(tokens).decode('utf-8')
+        except:
+            return '\ufffd' # bad utf-8
 
     def _decode(self,
                token_ids: Union[int, List[int], "np.ndarray", "torch.Tensor", "tf.Tensor"],
@@ -222,7 +227,18 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
                 return ""
             return self.encoder.get(token_ids, self.unk_token)
         elif isinstance(token_ids, list):
-            return self.decodeBytes(token_ids).decode('utf-8')
+            out_str = ""
+            out_last = 0
+            out_tokens = []
+            for i, token in enumerate(token_ids):
+                if token == 0:
+                    break
+                out_tokens += [token]
+                tmp = self._decode_tokens(out_tokens[out_last:])
+                if '\ufffd' not in tmp:
+                    out_str += tmp
+                    out_last = i + 1
+            return out_str
         else:
             return token_ids
 
