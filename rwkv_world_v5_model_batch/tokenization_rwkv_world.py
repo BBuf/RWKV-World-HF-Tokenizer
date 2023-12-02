@@ -149,7 +149,7 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
     def get_vocab(self):
         return dict(self.encoder, **self.added_tokens_encoder)
     
-    def add_tokens(self, new_tokens):
+    def add_tokens(self, new_tokens, special_tokens: bool = False):
         for token in new_tokens:
             token_id = self.convert_tokens_to_ids(token)
             self.added_tokens_decoder[token_id] = token
