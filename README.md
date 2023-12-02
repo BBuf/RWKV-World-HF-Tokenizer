@@ -187,4 +187,7 @@ The `lambda_pt.py` and `lambda_hf.py` files under the `check_lambda` folder eval
 ### Plan
 
 - [x] Support RWKV5.0 model.
-- [ ] Support RWKV5.2 model.
+- [x] Support RWKV5.2 model.
+- [x] Support Batch Infer For RWKV5.2 model.
+- [ ] Support RWKV6.0 model.
+
