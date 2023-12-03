@@ -1,12 +1,32 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-model = AutoModelForCausalLM.from_pretrained("/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv4-world4-0.1b-model/", torch_dtype=torch.float16).to(0)
-tokenizer = AutoTokenizer.from_pretrained("/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv4-world4-0.1b-model/", trust_remote_code=True)
+def generate_prompt(instruction, input=""):
+    instruction = instruction.strip().replace('\r\n', '\n').replace('\n\n', '\n')
+    input = input.strip().replace('\r\n', '\n').replace('\n\n', '\n')
+    if input:
+        return f"""Instruction: {instruction}
 
-text = "你叫什么名字？"
-prompt = f'Question: {text.strip()}\n\nAnswer:'
+Input: {input}
 
-inputs = tokenizer(prompt, return_tensors="pt").to(0)
-output = model.generate(inputs["input_ids"], max_new_tokens=40)
-print(tokenizer.decode(output[0].tolist(), skip_special_tokens=True))
+Response:"""
+    else:
+        return f"""User: hi
+
+Assistant: Hi. I am your assistant and I will provide expert full response in full details. Please feel free to ask any question and I will always answer it.
+
+User: {instruction}
+
+Assistant:"""
+
+model = AutoModelForCausalLM.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True).to(torch.float32).to(0)
+tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True)
+
+texts = ["请介绍北京的旅游景点", "介绍一下大熊猫", "乌兰察布"]
+prompts = [generate_prompt(text) for text in texts]
+
+inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(0)
+outputs = model.generate(inputs["input_ids"], max_new_tokens=128, do_sample=True, temperature=1.0, top_p=0.3, top_k=0, )
+
+for output in outputs:
+    print(tokenizer.decode(output.tolist(), skip_special_tokens=True))

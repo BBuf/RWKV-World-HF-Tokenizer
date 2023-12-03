@@ -299,7 +299,7 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
     def _get_padding_truncation_strategies(
         self, padding=False, truncation=None, max_length=None, pad_to_multiple_of=None, verbose=True, **kwargs
     ):
-        return PaddingStrategy.LONGEST, TruncationStrategy.LONGEST_FIRST, -1, kwargs
+        return PaddingStrategy.LONGEST, TruncationStrategy.DO_NOT_TRUNCATE, -1, kwargs
 
     def _encode_plus(
         self,
