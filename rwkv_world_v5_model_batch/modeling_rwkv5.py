@@ -106,25 +106,6 @@ def rwkv_linear_attention_v5_2(B, H, S, T, n_head, hidden, time_decay, time_firs
     out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H*S)
     out = out.to(dtype=hidden.dtype) * gate
     out = out @ ow
-    # else:
-    #     a = key @ value
-    #     # print('key.shape: ', key.shape)
-    #     # print('value.shape: ', value.shape)
-    #     # print('receptance.shape: ', receptance.shape)
-    #     # print('a.shape: ', a.shape)
-    #     # print('time_first.shape: ', time_first.shape)
-    #     # print('(time_first * a).shape: ', (time_first * a).shape)
-    #     # print('time_decay.shape: ', time_decay.shape)
-    #     # print('state.shape: ', state.shape)
-    #     out = receptance @ (time_first * a + state)
-    #     # print('out.shape: ', out.shape)
-    #     state = a + time_decay * state
-    #     # print('state.shape: ', state.shape)
-    #     out = out.reshape(B, H*S)
-    #     out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, 1, H*S)
-    #     out = out.to(dtype=hidden.dtype) * gate
-    #     out = out @ ow
-
 
     return out, state
 

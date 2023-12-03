@@ -26,8 +26,8 @@ User: {instruction}
 Assistant:"""
 
 
-model = AutoModelForCausalLM.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True).to(torch.float32)
-tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True).to(torch.float32)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True)
 
 text = "请介绍北京的旅游景点"
 prompt = generate_prompt(text)
@@ -82,8 +82,8 @@ User: {instruction}
 Assistant:"""
 
 
-model = AutoModelForCausalLM.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True, torch_dtype=torch.float16).to(0)
-tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, torch_dtype=torch.float16).to(0)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True)
 
 text = "介绍一下大熊猫"
 prompt = generate_prompt(text)
@@ -129,8 +129,8 @@ User: {instruction}
 
 Assistant:"""
 
-model = AutoModelForCausalLM.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True).to(torch.float32)
-tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True).to(torch.float32)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True)
 
 texts = ["请介绍北京的旅游景点", "介绍一下大熊猫", "乌兰察布"]
 prompts = [generate_prompt(text) for text in texts]
