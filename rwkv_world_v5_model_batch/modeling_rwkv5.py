@@ -92,7 +92,6 @@ def rwkv_linear_attention_v5_2(B, H, S, T, n_head, hidden, time_decay, time_firs
     time_first = time_first.float().reshape(-1,1,1).reshape(n_head, -1, 1)
     lxw = lxw.float()
     lxb = lxb.float()
-    # if seq_mode:
     out = torch.empty((B, T, H, S), dtype=receptance.dtype, device=receptance.device)
     for t in range(T):
         rt = receptance[:,:,t:t+1,:]
