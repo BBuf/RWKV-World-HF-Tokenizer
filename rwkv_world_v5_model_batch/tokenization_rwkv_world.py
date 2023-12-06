@@ -122,7 +122,14 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
             errors=errors,
             **kwargs,
         )
-        self._eos_token_id = 0
+    
+    @property
+    def eos_token_id(self) -> Optional[int]:
+        return 0
+    
+    @property
+    def eot_token_id(self) -> Optional[int]:
+        return 0
 
     @property
     def vocab_size(self):
@@ -204,7 +211,7 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
         return tokens
 
     def decodeBytes(self, tokens):
-        return b''.join(map(lambda i: self.encoder[i], tokens))
+        return b''.join(map(lambda i: self.encoder[i], tokens)) # noqa
 
     def _tokenize(self, text, **kwargs):
         """Tokenize a string."""
