@@ -115,7 +115,6 @@ def convert_rwkv_checkpoint_to_hf_format(
         vocab_size=vocab_size,
         num_hidden_layers=NUM_HIDDEN_LAYERS_MAPPING[size],
         hidden_size=HIDEN_SIZE_MAPPING[size],
-        model_version=model_version,
     )
     config.save_pretrained(output_dir)
 
@@ -200,12 +199,6 @@ if __name__ == "__main__":
         default=False,
         type=bool,
         help="use RWKV world series model tokenizer or normal tokenizer.")
-    parser.add_argument(
-        "--model_version",
-        default="5_2",
-        type=str,
-        help="model version of RWKV.",
-    )
 
     args = parser.parse_args()
     convert_rwkv_checkpoint_to_hf_format(
@@ -217,5 +210,4 @@ if __name__ == "__main__":
         push_to_hub=args.push_to_hub,
         model_name=args.model_name,
         is_world_tokenizer=args.is_world_tokenizer,
-        model_version=args.model_version,
     )

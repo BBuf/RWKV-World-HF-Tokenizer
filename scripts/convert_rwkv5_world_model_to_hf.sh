@@ -7,8 +7,7 @@ python convert_rwkv5_checkpoint_to_hf.py --repo_id BlinkDL/rwkv-5-world \
  --output_dir ../rwkv5-v2-world-3b-model/ \
  --tokenizer_file /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer \
  --size 3B \
- --is_world_tokenizer True \
- --model_version "5_2"
+ --is_world_tokenizer Tru
 
 cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/rwkv_vocab_v20230424.txt ../rwkv5-v2-world-3b-model/
 cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenization_rwkv_world.py ../rwkv5-v2-world-3b-model/
