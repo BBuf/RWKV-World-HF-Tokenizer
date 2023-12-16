@@ -281,7 +281,11 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
         )
 
         with open(vocab_file, "w", encoding="utf-8") as f:
-            f.write(json.dumps(self.encoder, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+            for idx, x in self.encoder.items():
+                if isinstance(x, str):
+                    x = x.decode("utf-8")
+                line = f"{idx} {repr(x)} {len(x)}\n"
+                f.write(line)
 
         return (vocab_file,)
 
