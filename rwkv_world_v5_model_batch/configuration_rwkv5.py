@@ -53,11 +53,9 @@ class Rwkv5Config(PretrainedConfig):
         layer_norm_epsilon (`float`, *optional*, defaults to 1e-05):
             The epsilon to use in the layer normalization layers.
         bos_token_id (`int`, *optional*, defaults to 0):
-            The id of the beginning of sentence token in the vocabulary. Defaults to 0 as RWKV5 uses the same tokenizer
-            as GPTNeoX.
+            The id of the beginning of sentence token in the vocabulary. Defaults to 0.
         eos_token_id (`int`, *optional*, defaults to 0):
-            The id of the end of sentence token in the vocabulary. Defaults to 0 as RWKV5 uses the same tokenizer as
-            GPTNeoX.
+            The id of the end of sentence token in the vocabulary. Defaults to 0.
         rescale_every (`int`, *optional*, defaults to 6):
             At inference, the hidden states (and weights of the correponding output layers) are divided by 2 every
             `rescale_every` layer. If set to 0 or a negative number, no rescale is done.
