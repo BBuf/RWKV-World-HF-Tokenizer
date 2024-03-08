@@ -264,11 +264,11 @@ class RWKVWorldTokenizer(PreTrainedTokenizer):
 
     def _convert_token_to_id(self, token):
         """Converts a token (str) in an id using the vocab."""
-        return self.encoder.get(token, self.encoder.get(self.unk_token))
+        return self.decoder.get(token.encode("utf-8"), self.unk_token_id)
 
     def _convert_id_to_token(self, index):
         """Converts an index (integer) in a token (str) using the vocab."""
-        return self.decoder.get(index)
+        return self.encoder.get(index)
 
     def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> Tuple[str]:
         if not os.path.exists(save_directory):
