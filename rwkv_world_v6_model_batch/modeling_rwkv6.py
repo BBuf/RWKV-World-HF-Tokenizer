@@ -314,7 +314,7 @@ class RwkvSelfAttention(nn.Module):
 
     def forward(self, hidden, state=None, use_cache=False, seq_mode=True):
         B = hidden.shape[0]
-        H = self.time_decay.shape[0]
+        H = self.time_faaaa.shape[0]
         S = hidden.shape[-1] // H
         T = hidden.shape[1]
 
@@ -359,8 +359,8 @@ class RwkvFeedForward(nn.Module):
         )
 
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
-        self.time_mix_key = nn.Parameter(torch.empty(1, 1, hidden_size))
-        self.time_mix_receptance = nn.Parameter(torch.empty(1, 1, hidden_size))
+        self.time_maa_k = nn.Parameter(torch.empty(1, 1, hidden_size))
+        self.time_maa_r = nn.Parameter(torch.empty(1, 1, hidden_size))
 
         self.key = nn.Linear(hidden_size, intermediate_size, bias=False)
         self.receptance = nn.Linear(hidden_size, hidden_size, bias=False)
@@ -449,8 +449,8 @@ class Rwkv6PreTrainedModel(PreTrainedModel):
 
             time_weight = torch.tensor(
                 [i / hidden_size for i in range(hidden_size)],
-                dtype=module.time_mix_key.dtype,
-                device=module.time_mix_key.device,
+                dtype=module.time_maa_k.dtype,
+                device=module.time_maa_k.device,
             )
             time_weight = time_weight[None, None, :]
 
@@ -497,14 +497,14 @@ class Rwkv6PreTrainedModel(PreTrainedModel):
 
             time_weight = torch.tensor(
                 [i / hidden_size for i in range(hidden_size)],
-                dtype=module.time_mix_key.dtype,
-                device=module.time_mix_key.device,
+                dtype=module.time_maa_k.dtype,
+                device=module.time_maa_k.device,
             )
             time_weight = time_weight[None, None, :]
 
             with torch.no_grad():
-                module.time_mix_key.data = torch.pow(time_weight, ratio_1_to_almost0)
-                module.time_mix_receptance.data = torch.pow(time_weight, ratio_1_to_almost0)
+                module.time_maa_k.data = 1.0 - torch.pow(time_weight, ratio_1_to_almost0)
+                module.time_maa_r.data = 1.0 - torch.pow(time_weight, ratio_1_to_almost0)
 
 
 @dataclass
