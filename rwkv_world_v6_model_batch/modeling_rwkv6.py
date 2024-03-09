@@ -274,7 +274,7 @@ class RwkvSelfAttention(nn.Module):
         self.output = nn.Linear(attention_hidden_size, hidden_size, bias=False)
         self.gate = nn.Linear(hidden_size, attention_hidden_size, bias=False)
         # https://github.com/BlinkDL/RWKV-LM/blob/3db37a72356b736966ddd377268f02b80963af3f/RWKV-v4neo/src/model.py#L190C1-L190C1
-        self.ln_x = nn.GroupNorm(hidden_size // config.head_size, hidden_size, eps=(1e-5)*(args.head_size_divisor**2)) # FIXME - head_size_divisor
+        self.ln_x = nn.GroupNorm(hidden_size // config.head_size, hidden_size, eps=(1e-5)*(config.head_size_divisor**2))
 
     # TODO: maybe jit, otherwise move inside forward
     def extract_key_value(self, B, H, S, T, hidden, state=None):
