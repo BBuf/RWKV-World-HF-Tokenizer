@@ -151,7 +151,7 @@ def rwkv_linear_attention_v6_cpu(
     key = key.to(torch.float32).view(B, T, H, S).transpose(1, 2).transpose(-2, -1)
     value = value.to(torch.float32).view(B, T, H, S).transpose(1, 2)
     receptance = receptance.to(torch.float32).view(B, T, H, S).transpose(1, 2)
-    time_decay = torch.exp(-torch.exp(time_decay.float())).reshape(-1, 1, 1).reshape(n_head, -1, 1)
+    time_decay = torch.exp(-torch.exp(time_decay.float())).view(B, T, H, S).permute(0, 2, 3, 1) # B, H, S, T
     time_first = time_first.float().reshape(-1, 1, 1).reshape(n_head, -1, 1)
     lxw = lxw.float()
     lxb = lxb.float()
@@ -160,10 +160,11 @@ def rwkv_linear_attention_v6_cpu(
         rt = receptance[:, :, t : t + 1, :]
         kt = key[:, :, :, t : t + 1]
         vt = value[:, :, t : t + 1, :]
+        wt = time_decay[:, :, :, t : t + 1]
         at = kt @ vt
         out[:, t] = (rt @ (time_first * at + state)).squeeze(2)
         with torch.no_grad():
-            state = at + time_decay * state
+            state = at + wt * state
 
     out = out.reshape(B * T, H * S)
     out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
@@ -262,11 +263,6 @@ class RwkvSelfAttention(nn.Module):
 
         self.time_faaaa = nn.Parameter(torch.empty(num_attention_heads, config.head_size))
         
-        # self.time_mix_gate = nn.Parameter(torch.empty(1, 1, hidden_size))
-        # self.time_mix_key = nn.Parameter(torch.empty(1, 1, hidden_size))
-        # self.time_mix_value = nn.Parameter(torch.empty(1, 1, hidden_size))
-        # self.time_mix_receptance = nn.Parameter(torch.empty(1, 1, hidden_size))
-
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
         self.receptance = nn.Linear(hidden_size, attention_hidden_size, bias=False)
         self.key = nn.Linear(hidden_size, attention_hidden_size, bias=False)
