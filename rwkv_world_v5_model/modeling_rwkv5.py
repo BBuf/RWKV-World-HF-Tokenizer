@@ -178,6 +178,7 @@ def rwkv_linear_attention_v5_cpu(
     gate,
     lxw,
     lxb,
+    head_size_divisor,
     ow,
     state,
 ):
@@ -199,7 +200,7 @@ def rwkv_linear_attention_v5_cpu(
             state = at + time_decay * state
 
     out = out.reshape(B * T, H * S)
-    out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
+    out = F.group_norm(out / head_size_divisor, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
     out = out.to(dtype=hidden.dtype) * gate
     out = out @ ow
 
@@ -221,6 +222,7 @@ def rwkv_linear_attention(
     gate,
     lxw,
     lxb,
+    head_size_divisor,
     ow,
     state,
 ):
@@ -244,13 +246,14 @@ def rwkv_linear_attention(
             gate,
             lxw,
             lxb,
+            head_size_divisor,
             ow,
             state,
         )
     else:
         out, state = WKV_5.apply(B, T, H * S, H, receptance, key, value, time_decay, time_first, state)
         out = out.reshape(B * T, H * S)
-        out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
+        out = F.group_norm(out / head_size_divisor, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
         out = out.to(dtype=hidden.dtype) * gate
         out = out @ ow
         return out, state
@@ -271,6 +274,7 @@ class RwkvSelfAttention(nn.Module):
         # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L146
         num_attention_heads = hidden_size // config.head_size
         self.num_attention_heads = num_attention_heads
+        self.head_size_divisor = config.head_size_divisor
         attention_hidden_size = (
             config.attention_hidden_size if config.attention_hidden_size is not None else hidden_size
         )
@@ -343,6 +347,7 @@ class RwkvSelfAttention(nn.Module):
             gate,
             self.ln_x.weight,
             self.ln_x.bias,
+            self.head_size_divisor,
             self.output.weight.t(),
             state=layer_state,
         )
