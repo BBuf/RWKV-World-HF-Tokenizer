@@ -40,11 +40,11 @@ from .configuration_rwkv6 import Rwkv6Config
 
 logger = logging.get_logger(__name__)
 
-_CHECKPOINT_FOR_DOC = "RWKV/rwkv-6-world-1b5"
+_CHECKPOINT_FOR_DOC = "RWKV/rwkv-6-world-1b6"
 _CONFIG_FOR_DOC = "Rwkv6Config"
 
 RWKV6_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "RWKV/rwkv-6-world-1b5",
+    "RWKV/rwkv-6-world-1b6",
     "RWKV/rwkv-6-world-3b",
     # See all RWKV models at https://huggingface.co/models?filter=rwkv
 ]
@@ -231,7 +231,7 @@ class RwkvSelfAttention(nn.Module):
         kernel_loaded = rwkv6_cuda_kernel is not None and rwkv6_cuda_kernel.head_size == config.head_size
         if is_ninja_available() and is_torch_cuda_available() and not kernel_loaded:
             try:
-                load_wkv6_cuda_kernel(config.context_length)
+                load_wkv6_cuda_kernel(config.head_size, config.context_length) # FIXME - context_length is not a configured attribute
             except Exception:
                 logger.info("Could not load the custom CUDA kernel for RWKV6 attention.")
         self.layer_id = layer_id
@@ -286,7 +286,7 @@ class RwkvSelfAttention(nn.Module):
 
         x = hidden
 
-        xx = self.time_shift(x) - x
+        xx = shifted - x
 
         xxx = x + xx * self.time_maa_x
         xxx = torch.tanh(xxx @ self.time_maa_w1).view(B*T, 5, -1).transpose(0, 1)
