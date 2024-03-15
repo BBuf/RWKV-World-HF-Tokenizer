@@ -18,6 +18,8 @@
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -57,7 +59,7 @@ def load_wkv5_cuda_kernel(head_size):
 
     global rwkv5_cuda_kernel
 
-    kernel_folder = Path(__file__).resolve()
+    kernel_folder = Path(__file__).parent.resolve()
     cuda_kernel_files = [kernel_folder / f for f in ["wkv5_op.cpp", "wkv5_cuda.cu"]]
 
     # Only load the kernel if it's not been loaded yet or if we changed the context length

@@ -98,6 +98,7 @@ class Rwkv6Config(PretrainedConfig):
         rescale_every=6,
         tie_word_embeddings=False,
         use_cache=True,
+        max_context_length=4096,
         **kwargs,
     ):
         self.vocab_size = vocab_size
@@ -111,6 +112,7 @@ class Rwkv6Config(PretrainedConfig):
         self.layer_norm_epsilon = layer_norm_epsilon
         self.rescale_every = rescale_every
         self.use_cache = use_cache
+        self.max_context_length = max_context_length
 
         self.bos_token_id = bos_token_id
         self.eos_token_id = eos_token_id

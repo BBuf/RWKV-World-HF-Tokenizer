@@ -18,6 +18,8 @@
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -51,13 +53,12 @@ RWKV6_PRETRAINED_MODEL_ARCHIVE_LIST = [
 
 rwkv6_cuda_kernel = None
 
-
 def load_wkv6_cuda_kernel(head_size, ctx_len):
     from torch.utils.cpp_extension import load as load_kernel
 
     global rwkv6_cuda_kernel
 
-    kernel_folder = Path(__file__).resolve()
+    kernel_folder = Path(__file__).parent.resolve()
     cuda_kernel_files = [kernel_folder / f for f in ["wkv6_op.cpp", "wkv6_cuda.cu"]]
 
     # Only load the kernel if it's not been loaded yet or if we changed the context length
@@ -88,13 +89,14 @@ def load_wkv6_cuda_kernel(head_size, ctx_len):
 
 class WKV_6(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, B, T, C, H, r, k, v, w, u):
+    def forward(ctx, B, T, C, H, r, k, v, w, u, s):
         with torch.no_grad():
             assert r.dtype == torch.bfloat16
             assert k.dtype == torch.bfloat16
             assert v.dtype == torch.bfloat16
             assert w.dtype == torch.bfloat16
             assert u.dtype == torch.bfloat16
+            assert s.dtype == torch.float32
             #assert HEAD_SIZE == C // H
             ctx.B = B
             ctx.T = T
@@ -108,11 +110,12 @@ class WKV_6(torch.autograd.Function):
             ew = (-torch.exp(w.float())).contiguous()
             ctx.save_for_backward(r, k, v, ew, u)
             y = torch.empty((B, T, C), device=r.device, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
+            # FIXME - current kernel does not handle nor update state
             rwkv6_cuda_kernel.forward(B, T, C, H, r, k, v, ew, u, y)
-            return y
+            return y, s
 
     @staticmethod
-    def backward(ctx, gy):
+    def backward(ctx, gy, gs):
         with torch.no_grad():
             assert gy.dtype == torch.bfloat16
             B = ctx.B
@@ -126,9 +129,10 @@ class WKV_6(torch.autograd.Function):
             gv = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
             gw = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
             gu = torch.empty((B, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
+            #gs = torch.empty((B, C//H, H, H), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
             rwkv6_cuda_kernel.backward(B, T, C, H, r, k, v, ew, u, gy, gr, gk, gv, gw, gu)
             gu = torch.sum(gu, 0).view(H, C//H)
-            return (None, None, None, None, gr, gk, gv, gw, gu)
+            return (None, None, None, None, gr, gk, gv, gw, gu, None)
 
 def rwkv_linear_attention_v6_cpu(
     B,
@@ -231,7 +235,7 @@ class RwkvSelfAttention(nn.Module):
         kernel_loaded = rwkv6_cuda_kernel is not None and rwkv6_cuda_kernel.head_size == config.head_size
         if is_ninja_available() and is_torch_cuda_available() and not kernel_loaded:
             try:
-                load_wkv6_cuda_kernel(config.head_size, config.context_length) # FIXME - context_length is not a configured attribute
+                load_wkv6_cuda_kernel(config.head_size, config.max_context_length) # FIXME - context_length is not a configured attribute
             except Exception:
                 logger.info("Could not load the custom CUDA kernel for RWKV6 attention.")
         self.layer_id = layer_id
