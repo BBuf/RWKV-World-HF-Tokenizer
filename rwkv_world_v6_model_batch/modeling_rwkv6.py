@@ -751,8 +751,16 @@ class Rwkv6Model(Rwkv6PreTrainedModel):
                         block.attention.output.weight.mul_(2 ** int(block_id // self.config.rescale_every))
                         block.feed_forward.value.weight.mul_(2 ** int(block_id // self.config.rescale_every))
                     else:
-                        block.attention.output.weight.div_(2 ** int(block_id // self.config.rescale_every))
-                        block.feed_forward.value.weight.div_(2 ** int(block_id // self.config.rescale_every))
+                        # Deal with quantization statistics
+                        if hasattr(block.attention.output.weight, "SCB"):
+                            block.attention.output.weight.SCB.div_(2 ** int(block_id // self.config.rescale_every))
+                            block.feed_forward.value.weight.SCB.div_(2 ** int(block_id // self.config.rescale_every))
+                        elif hasattr(block.attention.output.weight, "quant_state"):
+                            self._bnb_4bit_dequantize_and_rescale(block.attention.output, block_id)
+                            self._bnb_4bit_dequantize_and_rescale(block.feed_forward.value, block_id)
+                        else:
+                            block.attention.output.weight.div_(2 ** int(block_id // self.config.rescale_every))
+                            block.feed_forward.value.weight.div_(2 ** int(block_id // self.config.rescale_every))
 
         self.layers_are_rescaled = not self.training
 
