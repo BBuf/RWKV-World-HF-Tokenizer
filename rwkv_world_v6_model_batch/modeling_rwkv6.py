@@ -57,7 +57,7 @@ def load_wkv6_cuda_kernel(head_size, ctx_len):
 
     global rwkv6_cuda_kernel
 
-    kernel_folder = Path(__file__).resolve().parent.parent.parent / "kernels" / "rwkv6"
+    kernel_folder = Path(__file__).resolve()
     cuda_kernel_files = [kernel_folder / f for f in ["wkv6_op.cpp", "wkv6_cuda.cu"]]
 
     # Only load the kernel if it's not been loaded yet or if we changed the context length
