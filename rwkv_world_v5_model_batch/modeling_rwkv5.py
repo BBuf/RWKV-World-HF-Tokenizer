@@ -111,11 +111,12 @@ class WKV_5(torch.autograd.Function):
             y = torch.empty(
                 (B, T, C), device=r.device, dtype=torch.bfloat16, memory_format=torch.contiguous_format
             )  # .uniform_(-1, 1)
-            rwkv5_cuda_kernel.forward(B, T, C, H, r, k, v, eew, u, y, s)
+            # FIXME - current kernel does not handle nor update state
+            rwkv5_cuda_kernel.forward(B, T, C, H, r, k, v, eew, u, y)
             return y, s
 
     @staticmethod
-    def backward(ctx, gy):
+    def backward(ctx, gy, gs):
         with torch.no_grad():
             assert gy.dtype == torch.bfloat16
             B = ctx.B
@@ -159,10 +160,11 @@ class WKV_5(torch.autograd.Function):
                 dtype=torch.bfloat16,
                 memory_format=torch.contiguous_format,
             )  # .uniform_(-1, 1)
+            #gs = torch.empty((B, C//H, H, H), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
             rwkv5_cuda_kernel.backward(B, T, C, H, r, k, v, eew, ew, u, gy, gr, gk, gv, gw, gu)
             gw = torch.sum(gw, 0).view(H, C // H)
             gu = torch.sum(gu, 0).view(H, C // H)
-            return (None, None, None, None, gr, gk, gv, gw, gu)
+            return (None, None, None, None, gr, gk, gv, gw, gu, None)
 
 
 def rwkv_linear_attention_v5_cpu(
