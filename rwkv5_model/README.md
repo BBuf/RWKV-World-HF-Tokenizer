@@ -27,7 +27,7 @@ Assistant:"""
 
 
 model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True).to(torch.float32)
-tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, padding_side='left')
 
 text = "请介绍北京的旅游景点"
 prompt = generate_prompt(text)
@@ -83,7 +83,7 @@ Assistant:"""
 
 
 model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, torch_dtype=torch.float16).to(0)
-tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, padding_side='left')
 
 text = "介绍一下大熊猫"
 prompt = generate_prompt(text)
@@ -130,7 +130,7 @@ User: {instruction}
 Assistant:"""
 
 model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True).to(torch.float32)
-tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, padding_side='left')
 
 texts = ["请介绍北京的旅游景点", "介绍一下大熊猫", "乌兰察布"]
 prompts = [generate_prompt(text) for text in texts]
