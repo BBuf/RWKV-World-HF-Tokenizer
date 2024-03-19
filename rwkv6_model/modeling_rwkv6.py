@@ -198,19 +198,20 @@ def rwkv_linear_attention_v5_cpu(
     key,
     value,
     gate,
+    w,
     layer_norm_weight,
     layer_norm_bias,
     output_weight,
     state,
 ):
     Batch = hidden.shape[0]
-    AttentionHeads = time_decay.shape[0]
+    AttentionHeads = time_first.shape[0]
     HeadSize = hidden.shape[-1] // AttentionHeads
     SequenceLength = hidden.shape[1]
     key = key.to(torch.float32).view(Batch, SequenceLength, AttentionHeads, HeadSize).transpose(1, 2).transpose(-2, -1)
     value = value.to(torch.float32).view(Batch, SequenceLength, AttentionHeads, HeadSize).transpose(1, 2)
     receptance = receptance.to(torch.float32).view(Batch, SequenceLength, AttentionHeads, HeadSize).transpose(1, 2)
-    time_decay = torch.exp(-torch.exp(time_decay.float())).reshape(-1, 1, 1).reshape(AttentionHeads, -1, 1)
+    # time_decay = time_decay.float().reshape(-1, 1, 1).reshape(AttentionHeads, -1, 1)
     time_first = time_first.float().reshape(-1, 1, 1).reshape(AttentionHeads, -1, 1)
     layer_norm_weight = layer_norm_weight.float()
     layer_norm_bias = layer_norm_bias.float()
@@ -222,7 +223,7 @@ def rwkv_linear_attention_v5_cpu(
         at = kt @ vt
         out[:, t] = (rt @ (time_first * at + state)).squeeze(2)
         with torch.no_grad():
-            state = at + time_decay * state
+            state = at + w[t] * state
 
     out = out.reshape(Batch * SequenceLength, AttentionHeads * HeadSize)
     out = F.group_norm(out, num_groups=AttentionHeads, weight=layer_norm_weight, bias=layer_norm_bias).reshape(
@@ -242,13 +243,14 @@ def rwkv_linear_attention(
     key,
     value,
     gate,
+    w,
     layer_norm_weight,
     layer_norm_bias,
     output_weight,
     state,
 ):
     Batch = hidden.shape[0]
-    AttentionHeads = time_decay.shape[0]
+    AttentionHeads = time_first.shape[0]
     HeadSize = hidden.shape[-1] // AttentionHeads
     SequenceLength = hidden.shape[1]
     no_cuda = any(t.device.type != "cuda" for t in [time_decay, time_first, receptance, key, value])
@@ -264,6 +266,7 @@ def rwkv_linear_attention(
             key,
             value,
             gate,
+            w,
             layer_norm_weight,
             layer_norm_bias,
             output_weight,
@@ -310,9 +313,6 @@ class RwkvSelfAttention(nn.Module):
         )
         self.attention_hidden_size = attention_hidden_size
 
-        self.time_decay = nn.Parameter(torch.empty(num_attention_heads, config.head_size))
-        self.time_faaaa = nn.Parameter(torch.empty(num_attention_heads, config.head_size))
-
         ratio_0_to_1 = self.layer_id / (config.num_hidden_layers - 1)  # 0 to 1
         ratio_1_to_almost0 = 1.0 - (self.layer_id / config.num_hidden_layers)  # 1 to ~0
         ddd = torch.ones(1, 1, hidden_size)
@@ -325,6 +325,27 @@ class RwkvSelfAttention(nn.Module):
         self.time_maa_v = nn.Parameter(1.0 - (torch.pow(ddd, ratio_1_to_almost0) + 0.3 * ratio_0_to_1))
         self.time_maa_r = nn.Parameter(1.0 - torch.pow(ddd, 0.5 * ratio_1_to_almost0))
         self.time_maa_g = nn.Parameter(1.0 - torch.pow(ddd, 0.5 * ratio_1_to_almost0))
+
+        TIME_MIX_EXTRA_DIM = 32
+        self.time_maa_w1 = nn.Parameter(torch.zeros(hidden_size, TIME_MIX_EXTRA_DIM*5).uniform_(-1e-4, 1e-4))
+        self.time_maa_w2 = nn.Parameter(torch.zeros(5, TIME_MIX_EXTRA_DIM, hidden_size).uniform_(-1e-4, 1e-4))
+
+        # fancy time_decay
+        decay_speed = torch.ones(attention_hidden_size)
+        for n in range(attention_hidden_size):
+            decay_speed[n] = -6 + 5 * (n / (attention_hidden_size - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
+        self.time_decay = nn.Parameter(decay_speed.reshape(1,1,attention_hidden_size))
+    
+        TIME_DECAY_EXTRA_DIM = 64
+        self.time_decay_w1 = nn.Parameter(torch.zeros(hidden_size, TIME_DECAY_EXTRA_DIM).uniform_(-1e-4, 1e-4))
+        self.time_decay_w2 = nn.Parameter(torch.zeros(TIME_DECAY_EXTRA_DIM, attention_hidden_size).uniform_(-1e-4, 1e-4))
+
+        tmp = torch.zeros(attention_hidden_size)
+        for n in range(attention_hidden_size):
+            zigzag = ((n + 1) % 3 - 1) * 0.1
+            tmp[n] = ratio_0_to_1 * (1 - (n / (attention_hidden_size - 1))) + zigzag
+
+        self.time_faaaa = nn.Parameter(tmp.reshape(self.num_attention_heads, config.head_size))
 
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
         self.key = nn.Linear(hidden_size, attention_hidden_size, bias=False)
@@ -373,24 +394,46 @@ class RwkvSelfAttention(nn.Module):
         # k = (kw @ xk).view(H, S, 1)
         # v = (vw @ xv).view(H, 1, S)
         # g = F.silu(gw @ xg)
+        
+        BatchSize = hidden.shape[0]
+        AttentionHeads = self.num_attention_heads
+        HeadSize = hidden.shape[-1] // AttentionHeads
+        SequenceLength = hidden.shape[1]
+        sx = shifted - hidden
+        xxx = hidden + sx * self.time_maa_x
+        xxx = torch.tanh(xxx @ self.time_maa_w1).view(BatchSize*SequenceLength, 5, -1).transpose(0, 1)
+        xxx = torch.bmm(xxx, self.time_maa_w2).view(5, BatchSize, SequenceLength, -1)
+        mw, mk, mv, mr, mg = xxx.unbind(dim=0)
+        xw = hidden + sx * (self.time_maa_w + mw)
+        xk = hidden + sx * (self.time_maa_k + mk)
+        xv = hidden + sx * (self.time_maa_v + mv)
+        xr = hidden + sx * (self.time_maa_r + mr)
+        xg = hidden + sx * (self.time_maa_g + mg)
 
-        key = hidden * self.time_mix_key + shifted * (1 - self.time_mix_key)
-        value = hidden * self.time_mix_value + shifted * (1 - self.time_mix_value)
-        receptance = hidden * self.time_mix_receptance + shifted * (1 - self.time_mix_receptance)
-        gate = hidden * self.time_mix_gate + shifted * (1 - self.time_mix_gate)
+        ww = (torch.tanh(xw @ self.time_decay_w1) @ self.time_decay_w2).float().view(SequenceLength, AttentionHeads, HeadSize, 1)
+        w = self.time_decay.float().reshape(AttentionHeads, -1, 1).view(1, AttentionHeads, HeadSize, 1) + ww
+        key = self.key(xk)
+        value = self.value(xv)
+        receptance = self.receptance(xr)
+        gate = F.silu(self.gate(xg))
 
-        key = self.key(key)
-        value = self.value(value)
-        receptance = self.receptance(receptance)
-        gate = F.silu(self.gate(gate))
+        # key = hidden * self.time_mix_key + shifted * (1 - self.time_mix_key)
+        # value = hidden * self.time_mix_value + shifted * (1 - self.time_mix_value)
+        # receptance = hidden * self.time_mix_receptance + shifted * (1 - self.time_mix_receptance)
+        # gate = hidden * self.time_mix_gate + shifted * (1 - self.time_mix_gate)
+
+        # key = self.key(key)
+        # value = self.value(value)
+        # receptance = self.receptance(receptance)
+        # gate = F.silu(self.gate(gate))
 
         if state is not None:
             state[0][:, :, self.layer_id] = hidden[:, -1]
 
-        return receptance, key, value, gate, state
+        return receptance, key, value, gate, w, state
 
     def forward(self, hidden, state=None, use_cache=False, seq_mode=True):
-        receptance, key, value, gate, state = self.extract_key_value(hidden, state=state)
+        receptance, key, value, gate, w, state = self.extract_key_value(hidden, state=state)
         layer_state = state[1][:, :, :, :, self.layer_id] if state is not None else None
         rwkv, layer_state = rwkv_linear_attention(
             hidden,
@@ -400,6 +443,7 @@ class RwkvSelfAttention(nn.Module):
             key,
             value,
             gate,
+            w,
             self.ln_x.weight,
             self.ln_x.bias,
             self.output.weight.t(),
@@ -425,8 +469,8 @@ class RwkvFeedForward(nn.Module):
         )
 
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
-        self.time_mix_key = nn.Parameter(torch.empty(1, 1, hidden_size))
-        self.time_mix_receptance = nn.Parameter(torch.empty(1, 1, hidden_size))
+        self.time_maa_k = nn.Parameter(torch.empty(1, 1, hidden_size))
+        self.time_maa_r = nn.Parameter(torch.empty(1, 1, hidden_size))
 
         self.key = nn.Linear(hidden_size, intermediate_size, bias=False)
         self.receptance = nn.Linear(hidden_size, hidden_size, bias=False)
@@ -441,8 +485,21 @@ class RwkvFeedForward(nn.Module):
                 shifted[:, 0] = state[2][:, :, self.layer_id]
         if len(shifted.size()) == 2:
             shifted = shifted.unsqueeze(1)
-        key = hidden * self.time_mix_key + shifted * (1 - self.time_mix_key)
-        receptance = hidden * self.time_mix_receptance + shifted * (1 - self.time_mix_receptance)
+        # xx = self.time_shift(x) - x
+        # xk = x + xx * self.time_maa_k
+        # xr = x + xx * self.time_maa_r
+
+        # k = self.key(xk)
+        # k = torch.relu(k) ** 2
+        # kv = self.value(k)
+        # return torch.sigmoid(self.receptance(xr)) * kv
+            
+        xx = shifted - hidden
+        key = hidden + xx * self.time_maa_k
+        receptance = hidden + xx * self.time_maa_r
+
+        # key = hidden * self.time_mix_key + shifted * (1 - self.time_mix_key)
+        # receptance = hidden * self.time_mix_receptance + shifted * (1 - self.time_mix_receptance)
 
         key = torch.square(torch.relu(self.key(key)))
         value = self.value(key)

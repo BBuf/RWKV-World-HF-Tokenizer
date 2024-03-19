@@ -116,7 +116,7 @@ def convert_rwkv_checkpoint_to_hf_format(
     if size not in possible_sizes:
         raise ValueError(f"`size` should be one of {possible_sizes}, got {size}.")
 
-    config = configuration_rwkv6.Rwkv5Config(
+    config = configuration_rwkv6.Rwkv6Config(
         vocab_size=vocab_size,
         num_hidden_layers=NUM_HIDDEN_LAYERS_MAPPING[size],
         hidden_size=HIDEN_SIZE_MAPPING[size],
