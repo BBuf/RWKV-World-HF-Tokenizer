@@ -88,7 +88,6 @@ class Rwkv5Config(PretrainedConfig):
         hidden_size=768,
         num_hidden_layers=24,
         attention_hidden_size=None,
-        num_attention_heads=64,
         head_size=64,
         head_size_divisor=8,
         intermediate_size=None,
@@ -104,7 +103,6 @@ class Rwkv5Config(PretrainedConfig):
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.attention_hidden_size = attention_hidden_size if attention_hidden_size is not None else hidden_size
-        self.num_attention_heads = num_attention_heads
         self.head_size = head_size
         self.head_size_divisor = head_size_divisor
         self.intermediate_size = None
