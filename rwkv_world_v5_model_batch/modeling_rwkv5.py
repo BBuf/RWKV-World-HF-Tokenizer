@@ -88,7 +88,7 @@ def load_wkv5_cuda_kernel(head_size):
 
 class WKV_5(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, B, T, C, H, r, k, v, w, u, s):
+    def forward(ctx, r, k, v, w, u, s):
         with torch.no_grad():
             assert r.dtype == torch.bfloat16
             assert k.dtype == torch.bfloat16
@@ -96,6 +96,8 @@ class WKV_5(torch.autograd.Function):
             assert w.dtype == torch.bfloat16
             assert u.dtype == torch.bfloat16
             assert s.dtype == torch.float32
+            B, T, C = r.shape
+            H, S = u.shape
             ctx.B = B
             ctx.T = T
             ctx.C = C
@@ -112,7 +114,7 @@ class WKV_5(torch.autograd.Function):
                 (B, T, C), device=r.device, dtype=torch.bfloat16, memory_format=torch.contiguous_format
             )  # .uniform_(-1, 1)
             # FIXME - current kernel does not handle nor update state
-            rwkv5_cuda_kernel.forward(B, T, C, H, r, k, v, eew, u, y)
+            rwkv5_cuda_kernel.forward_bf16(B, T, C, H, s, r, k, v, eew, u, y)
             return y, s
 
     @staticmethod
@@ -161,38 +163,28 @@ class WKV_5(torch.autograd.Function):
                 memory_format=torch.contiguous_format,
             )  # .uniform_(-1, 1)
             #gs = torch.empty((B, C//H, H, H), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
-            rwkv5_cuda_kernel.backward(B, T, C, H, r, k, v, eew, ew, u, gy, gr, gk, gv, gw, gu)
+            rwkv5_cuda_kernel.backward_bf16(B, T, C, H, s, r, k, v, eew, ew, u, gy, gr, gk, gv, gw, gu)
             gw = torch.sum(gw, 0).view(H, C // H)
             gu = torch.sum(gu, 0).view(H, C // H)
             return (None, None, None, None, gr, gk, gv, gw, gu, None)
 
 
 def rwkv_linear_attention_v5_cpu(
-    B,
-    H,
-    S,
-    T,
-    n_head,
-    hidden,
-    time_decay,
-    time_first,
     receptance,
     key,
     value,
-    gate,
-    lxw,
-    lxb,
-    head_size_divisor,
-    ow,
+    time_decay,
+    time_first,
     state,
 ):
+    input_dtype = key.dtype
+    B,T,C = receptance.shape
+    H, S = time_first.shape
     key = key.to(torch.float32).view(B, T, H, S).transpose(1, 2).transpose(-2, -1)
     value = value.to(torch.float32).view(B, T, H, S).transpose(1, 2)
     receptance = receptance.to(torch.float32).view(B, T, H, S).transpose(1, 2)
-    time_decay = torch.exp(-torch.exp(time_decay.float())).reshape(-1, 1, 1).reshape(n_head, -1, 1)
-    time_first = time_first.float().reshape(-1, 1, 1).reshape(n_head, -1, 1)
-    lxw = lxw.float()
-    lxb = lxb.float()
+    time_decay = torch.exp(-torch.exp(time_decay.float())).reshape(-1, 1, 1).reshape(H, -1, 1)
+    time_first = time_first.float().reshape(-1, 1, 1).reshape(H, -1, 1)
     out = torch.zeros_like(key).reshape(B, T, H, S)
     for t in range(T):
         rt = receptance[:, :, t : t + 1, :]
@@ -203,12 +195,7 @@ def rwkv_linear_attention_v5_cpu(
         with torch.no_grad():
             state = at + time_decay * state
 
-    out = out.reshape(B * T, H * S)
-    out = F.group_norm(out / head_size_divisor, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
-    out = out.to(dtype=hidden.dtype) * gate
-    out = out @ ow
-
-    return out, state
+    return out.to(input_dtype), state
 
 
 def rwkv_linear_attention(
@@ -235,32 +222,22 @@ def rwkv_linear_attention(
     # in this case).
     one_token = key.size(1) == 1
     if rwkv5_cuda_kernel is None or no_cuda or one_token:
-        return rwkv_linear_attention_v5_cpu(
-            B,
-            H,
-            S,
-            T,
-            n_head,
-            hidden,
-            time_decay,
-            time_first,
+        out, state = rwkv_linear_attention_v5_cpu(
             receptance,
             key,
             value,
-            gate,
-            lxw,
-            lxb,
-            head_size_divisor,
-            ow,
+            time_decay,
+            time_first,
             state,
         )
     else:
-        out, state = WKV_5.apply(B, T, H * S, H, receptance, key, value, time_decay, time_first, state)
-        out = out.reshape(B * T, H * S)
-        out = F.group_norm(out / head_size_divisor, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
-        out = out.to(dtype=hidden.dtype) * gate
-        out = out @ ow
-        return out, state
+        out, state = WKV_5.apply(receptance, key, value, time_decay, time_first, state)
+
+    out = out.reshape(B * T, H * S)
+    out = F.group_norm(out / head_size_divisor, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
+    out = out.to(dtype=hidden.dtype) * gate
+    out = out @ ow
+    return out, state
 
 
 class RwkvSelfAttention(nn.Module):
@@ -270,7 +247,7 @@ class RwkvSelfAttention(nn.Module):
         kernel_loaded = rwkv5_cuda_kernel is not None and rwkv5_cuda_kernel.head_size == config.head_size
         if is_ninja_available() and is_torch_cuda_available() and not kernel_loaded:
             try:
-                load_wkv5_cuda_kernel(config.context_length)
+                load_wkv5_cuda_kernel(config.head_size)
             except Exception:
                 logger.info("Could not load the custom CUDA kernel for RWKV5 attention.")
         self.layer_id = layer_id
@@ -329,10 +306,8 @@ class RwkvSelfAttention(nn.Module):
         return receptance, key, value, gate, state
 
     def forward(self, hidden, state=None, use_cache=False, seq_mode=True):
-        B = hidden.shape[0]
-        H = self.time_decay.shape[0]
-        S = hidden.shape[-1] // H
-        T = hidden.shape[1]
+        B, T, C = hidden.shape
+        H, S = self.time_decay.shape
 
         receptance, key, value, gate, state = self.extract_key_value(B, H, S, T, hidden, state=state)
         layer_state = state[1][:, :, :, :, self.layer_id] if state is not None else None
