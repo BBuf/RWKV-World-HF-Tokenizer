@@ -13,9 +13,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch RWKV5 World model."""
+"""PyTorch RWKV6 World model."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -30,38 +31,40 @@ from transformers.utils import (
     add_code_sample_docstrings,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
+    is_bitsandbytes_available,
     is_ninja_available,
     is_torch_cuda_available,
     logging,
 )
 
-from .configuration_rwkv5 import Rwkv5Config
+from .configuration_rwkv6 import Rwkv6Config
 
 
 logger = logging.get_logger(__name__)
 
 _CHECKPOINT_FOR_DOC = "RWKV/rwkv-5-world-1b5"
-_CONFIG_FOR_DOC = "Rwkv5Config"
+_CONFIG_FOR_DOC = "Rwkv6Config"
 
-RWKV5_PRETRAINED_MODEL_ARCHIVE_LIST = [
+RWKV6_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "RWKV/rwkv-5-world-1b5",
     "RWKV/rwkv-5-world-3b",
     # See all RWKV models at https://huggingface.co/models?filter=rwkv
 ]
 
-rwkv5_cuda_kernel = None
+rwkv6_cuda_kernel = None
 
 
-def load_wkv5_cuda_kernel(head_size):
+# Copied from https://github.com/huggingface/transformers/blob/18cbaf13dcaca7145f5652aefb9b19734c56c3cd/src/transformers/models/rwkv/modeling_rwkv.py#L65
+def load_wkv6_cuda_kernel(head_size):
     from torch.utils.cpp_extension import load as load_kernel
 
-    global rwkv5_cuda_kernel
+    global rwkv6_cuda_kernel
 
-    kernel_folder = Path(__file__).resolve().parent.parent.parent / "kernels" / "rwkv5"
-    cuda_kernel_files = [kernel_folder / f for f in ["wkv5_op.cpp", "wkv5_cuda.cu"]]
+    kernel_folder = Path(__file__).resolve().parent.parent.parent / "kernels" / "rwkv6"
+    cuda_kernel_files = [kernel_folder / f for f in ["wkv6_op.cpp", "wkv6_cuda.cu"]]
 
     # Only load the kernel if it's not been loaded yet or if we changed the context length
-    if rwkv5_cuda_kernel is not None and rwkv5_cuda_kernel.head_size == head_size:
+    if rwkv6_cuda_kernel is not None and rwkv6_cuda_kernel.head_size == head_size:
         return
 
     logger.info(f"Loading CUDA kernel for RWKV at head size of {head_size}.")
@@ -75,100 +78,119 @@ def load_wkv5_cuda_kernel(head_size):
         "--extra-device-vectorization",
         f"-D_N_={head_size}",
     ]
-    rwkv5_cuda_kernel = load_kernel(
+    rwkv6_cuda_kernel = load_kernel(
         name=f"wkv_{head_size}",
         sources=cuda_kernel_files,
         verbose=(logging.get_verbosity() == logging.DEBUG),
         extra_cuda_cflags=flags,
     )
-    rwkv5_cuda_kernel.head_size = head_size
+    rwkv6_cuda_kernel.head_size = head_size
 
 
 class WKV_5(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, B, T, C, H, r, k, v, w, u, s):
+    def forward(ctx, receptance, key, value, time_decay, time_first, state):
         with torch.no_grad():
-            assert r.dtype == torch.bfloat16
-            assert k.dtype == torch.bfloat16
-            assert v.dtype == torch.bfloat16
-            assert w.dtype == torch.bfloat16
-            assert u.dtype == torch.bfloat16
-            assert s.dtype == torch.float32
-            ctx.B = B
-            ctx.T = T
-            ctx.C = C
-            ctx.H = H
-            assert r.is_contiguous()
-            assert k.is_contiguous()
-            assert v.is_contiguous()
-            assert w.is_contiguous()
-            assert u.is_contiguous()
-            ew = (-torch.exp(w.float())).contiguous()
-            eew = (torch.exp(ew)).contiguous()
-            ctx.save_for_backward(r, k, v, eew, ew, u)
-            y = torch.empty(
-                (B, T, C), device=r.device, dtype=torch.bfloat16, memory_format=torch.contiguous_format
-            )  # .uniform_(-1, 1)
-            rwkv5_cuda_kernel.forward(B, T, C, H, r, k, v, eew, u, y, s)
-            return y, s
+            Batch = key.shape[0]
+            SequenceLength = key.shape[1]
+            HiddenSize = key.shape[2]
+            HeadSize = HiddenSize // time_decay.shape[0]
+            ctx.Batch = Batch
+            ctx.SequenceLength = SequenceLength
+            ctx.HiddenSize = HiddenSize
+            ctx.HeadSize = HeadSize
+            e_time_decay = (-torch.exp(time_decay.float())).contiguous()
+            ee_time_decay = (torch.exp(e_time_decay)).contiguous()
+            ctx.save_for_backward(receptance, key, value, ee_time_decay, e_time_decay, time_first)
+            out = torch.empty(
+                (Batch, SequenceLength, HiddenSize),
+                device=receptance.device,
+                dtype=torch.bfloat16,
+                memory_format=torch.contiguous_format,
+            )
+            rwkv6_cuda_kernel.forward(
+                Batch,
+                SequenceLength,
+                HiddenSize,
+                HeadSize,
+                receptance,
+                key,
+                value,
+                ee_time_decay,
+                time_first,
+                out,
+                state,
+            )
+            return out, state
 
     @staticmethod
-    def backward(ctx, gy):
+    def backward(ctx, gout):
         with torch.no_grad():
-            assert gy.dtype == torch.bfloat16
-            B = ctx.B
-            T = ctx.T
-            C = ctx.C
-            H = ctx.H
-            assert gy.is_contiguous()
-            r, k, v, eew, ew, u = ctx.saved_tensors
-            gr = torch.empty(
-                (B, T, C),
-                device=gy.device,
+            assert gout.dtype == torch.bfloat16
+            Batch = ctx.Batch
+            SequenceLength = ctx.SequenceLength
+            HiddenSize = ctx.HiddenSize
+            HeadSize = ctx.HeadSize
+            receptance, key, value, ee_time_decay, e_time_decay, time_first = ctx.saved_tensors
+            greceptance = torch.empty(
+                (Batch, SequenceLength, HiddenSize),
+                device=gout.device,
                 requires_grad=False,
                 dtype=torch.bfloat16,
                 memory_format=torch.contiguous_format,
-            )  # .uniform_(-1, 1)
-            gk = torch.empty(
-                (B, T, C),
-                device=gy.device,
+            )
+            g_key = torch.empty(
+                (Batch, SequenceLength, HiddenSize),
+                device=gout.device,
                 requires_grad=False,
                 dtype=torch.bfloat16,
                 memory_format=torch.contiguous_format,
-            )  # .uniform_(-1, 1)
-            gv = torch.empty(
-                (B, T, C),
-                device=gy.device,
+            )
+            g_value = torch.empty(
+                (Batch, SequenceLength, HiddenSize),
+                device=gout.device,
                 requires_grad=False,
                 dtype=torch.bfloat16,
                 memory_format=torch.contiguous_format,
-            )  # .uniform_(-1, 1)
-            gw = torch.empty(
-                (B, C),
-                device=gy.device,
+            )
+            g_time_decay = torch.empty(
+                (Batch, HiddenSize),
+                device=gout.device,
                 requires_grad=False,
                 dtype=torch.bfloat16,
                 memory_format=torch.contiguous_format,
-            )  # .uniform_(-1, 1)
-            gu = torch.empty(
-                (B, C),
-                device=gy.device,
+            )
+            g_time_first = torch.empty(
+                (Batch, HiddenSize),
+                device=gout.device,
                 requires_grad=False,
                 dtype=torch.bfloat16,
                 memory_format=torch.contiguous_format,
-            )  # .uniform_(-1, 1)
-            rwkv5_cuda_kernel.backward(B, T, C, H, r, k, v, eew, ew, u, gy, gr, gk, gv, gw, gu)
-            gw = torch.sum(gw, 0).view(H, C // H)
-            gu = torch.sum(gu, 0).view(H, C // H)
-            return (None, None, None, None, gr, gk, gv, gw, gu)
+            )
+            rwkv6_cuda_kernel.backward(
+                Batch,
+                SequenceLength,
+                HiddenSize,
+                HeadSize,
+                receptance,
+                key,
+                value,
+                ee_time_decay,
+                e_time_decay,
+                time_first,
+                gout,
+                greceptance,
+                g_key,
+                g_value,
+                g_time_decay,
+                g_time_first,
+            )
+            g_time_decay = torch.sum(g_time_decay, 0).view(HeadSize, HiddenSize // HeadSize)
+            g_time_first = torch.sum(g_time_first, 0).view(HeadSize, HiddenSize // HeadSize)
+            return (None, None, None, None, greceptance, g_key, g_value, g_time_decay, g_time_first)
 
 
 def rwkv_linear_attention_v5_cpu(
-    B,
-    H,
-    S,
-    T,
-    n_head,
     hidden,
     time_decay,
     time_first,
@@ -176,20 +198,24 @@ def rwkv_linear_attention_v5_cpu(
     key,
     value,
     gate,
-    lxw,
-    lxb,
-    ow,
+    layer_norm_weight,
+    layer_norm_bias,
+    output_weight,
     state,
 ):
-    key = key.to(torch.float32).view(B, T, H, S).transpose(1, 2).transpose(-2, -1)
-    value = value.to(torch.float32).view(B, T, H, S).transpose(1, 2)
-    receptance = receptance.to(torch.float32).view(B, T, H, S).transpose(1, 2)
-    time_decay = torch.exp(-torch.exp(time_decay.float())).reshape(-1, 1, 1).reshape(n_head, -1, 1)
-    time_first = time_first.float().reshape(-1, 1, 1).reshape(n_head, -1, 1)
-    lxw = lxw.float()
-    lxb = lxb.float()
-    out = torch.zeros_like(key).reshape(B, T, H, S)
-    for t in range(T):
+    Batch = hidden.shape[0]
+    AttentionHeads = time_decay.shape[0]
+    HeadSize = hidden.shape[-1] // AttentionHeads
+    SequenceLength = hidden.shape[1]
+    key = key.to(torch.float32).view(Batch, SequenceLength, AttentionHeads, HeadSize).transpose(1, 2).transpose(-2, -1)
+    value = value.to(torch.float32).view(Batch, SequenceLength, AttentionHeads, HeadSize).transpose(1, 2)
+    receptance = receptance.to(torch.float32).view(Batch, SequenceLength, AttentionHeads, HeadSize).transpose(1, 2)
+    time_decay = torch.exp(-torch.exp(time_decay.float())).reshape(-1, 1, 1).reshape(AttentionHeads, -1, 1)
+    time_first = time_first.float().reshape(-1, 1, 1).reshape(AttentionHeads, -1, 1)
+    layer_norm_weight = layer_norm_weight.float()
+    layer_norm_bias = layer_norm_bias.float()
+    out = torch.zeros_like(key).reshape(Batch, SequenceLength, AttentionHeads, HeadSize)
+    for t in range(SequenceLength):
         rt = receptance[:, :, t : t + 1, :]
         kt = key[:, :, :, t : t + 1]
         vt = value[:, :, t : t + 1, :]
@@ -198,20 +224,17 @@ def rwkv_linear_attention_v5_cpu(
         with torch.no_grad():
             state = at + time_decay * state
 
-    out = out.reshape(B * T, H * S)
-    out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
+    out = out.reshape(Batch * SequenceLength, AttentionHeads * HeadSize)
+    out = F.group_norm(out, num_groups=AttentionHeads, weight=layer_norm_weight, bias=layer_norm_bias).reshape(
+        Batch, SequenceLength, AttentionHeads * HeadSize
+    )
     out = out.to(dtype=hidden.dtype) * gate
-    out = out @ ow
+    out = out @ output_weight
 
     return out, state
 
 
 def rwkv_linear_attention(
-    B,
-    H,
-    S,
-    T,
-    n_head,
     hidden,
     time_decay,
     time_first,
@@ -219,22 +242,21 @@ def rwkv_linear_attention(
     key,
     value,
     gate,
-    lxw,
-    lxb,
-    ow,
+    layer_norm_weight,
+    layer_norm_bias,
+    output_weight,
     state,
 ):
+    Batch = hidden.shape[0]
+    AttentionHeads = time_decay.shape[0]
+    HeadSize = hidden.shape[-1] // AttentionHeads
+    SequenceLength = hidden.shape[1]
     no_cuda = any(t.device.type != "cuda" for t in [time_decay, time_first, receptance, key, value])
     # Launching the CUDA kernel for just one token will actually be slower (there is no for loop in the CPU version
     # in this case).
     one_token = key.size(1) == 1
-    if rwkv5_cuda_kernel is None or no_cuda or one_token:
+    if rwkv6_cuda_kernel is None or no_cuda or one_token:
         return rwkv_linear_attention_v5_cpu(
-            B,
-            H,
-            S,
-            T,
-            n_head,
             hidden,
             time_decay,
             time_first,
@@ -242,17 +264,30 @@ def rwkv_linear_attention(
             key,
             value,
             gate,
-            lxw,
-            lxb,
-            ow,
+            layer_norm_weight,
+            layer_norm_bias,
+            output_weight,
             state,
         )
     else:
-        out, state = WKV_5.apply(B, T, H * S, H, receptance, key, value, time_decay, time_first, state)
-        out = out.reshape(B * T, H * S)
-        out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
+        out, state = WKV_5.apply(
+            Batch,
+            SequenceLength,
+            AttentionHeads * HeadSize,
+            AttentionHeads,
+            receptance,
+            key,
+            value,
+            time_decay,
+            time_first,
+            state,
+        )
+        out = out.reshape(Batch * SequenceLength, AttentionHeads * HeadSize)
+        out = F.group_norm(out, num_groups=AttentionHeads, weight=layer_norm_weight, bias=layer_norm_bias).reshape(
+            Batch, SequenceLength, AttentionHeads * HeadSize
+        )
         out = out.to(dtype=hidden.dtype) * gate
-        out = out @ ow
+        out = out @ output_weight
         return out, state
 
 
@@ -260,15 +295,14 @@ class RwkvSelfAttention(nn.Module):
     def __init__(self, config, layer_id=0):
         super().__init__()
         self.config = config
-        kernel_loaded = rwkv5_cuda_kernel is not None and rwkv5_cuda_kernel.head_size == config.head_size
+        kernel_loaded = rwkv6_cuda_kernel is not None and rwkv6_cuda_kernel.head_size == config.head_size
         if is_ninja_available() and is_torch_cuda_available() and not kernel_loaded:
             try:
-                load_wkv5_cuda_kernel(config.context_length)
+                load_wkv6_cuda_kernel(config.context_length)
             except Exception:
-                logger.info("Could not load the custom CUDA kernel for RWKV5 attention.")
+                logger.info("Could not load the custom CUDA kernel for RWKV6 attention.")
         self.layer_id = layer_id
         hidden_size = config.hidden_size
-        # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L146
         num_attention_heads = hidden_size // config.head_size
         self.num_attention_heads = num_attention_heads
         attention_hidden_size = (
@@ -278,11 +312,19 @@ class RwkvSelfAttention(nn.Module):
 
         self.time_decay = nn.Parameter(torch.empty(num_attention_heads, config.head_size))
         self.time_faaaa = nn.Parameter(torch.empty(num_attention_heads, config.head_size))
-        self.time_mix_gate = nn.Parameter(torch.empty(1, 1, hidden_size))
 
-        self.time_mix_key = nn.Parameter(torch.empty(1, 1, hidden_size))
-        self.time_mix_value = nn.Parameter(torch.empty(1, 1, hidden_size))
-        self.time_mix_receptance = nn.Parameter(torch.empty(1, 1, hidden_size))
+        ratio_0_to_1 = self.layer_id / (config.num_hidden_layers - 1)  # 0 to 1
+        ratio_1_to_almost0 = 1.0 - (self.layer_id / config.num_hidden_layers)  # 1 to ~0
+        ddd = torch.ones(1, 1, hidden_size)
+        for i in range(hidden_size):
+            ddd[0, 0, i] = i / hidden_size
+
+        self.time_maa_x = nn.Parameter(1.0 - torch.pow(ddd, ratio_1_to_almost0))
+        self.time_maa_w = nn.Parameter(1.0 - torch.pow(ddd, ratio_1_to_almost0))
+        self.time_maa_k = nn.Parameter(1.0 - torch.pow(ddd, ratio_1_to_almost0))
+        self.time_maa_v = nn.Parameter(1.0 - (torch.pow(ddd, ratio_1_to_almost0) + 0.3 * ratio_0_to_1))
+        self.time_maa_r = nn.Parameter(1.0 - torch.pow(ddd, 0.5 * ratio_1_to_almost0))
+        self.time_maa_g = nn.Parameter(1.0 - torch.pow(ddd, 0.5 * ratio_1_to_almost0))
 
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
         self.key = nn.Linear(hidden_size, attention_hidden_size, bias=False)
@@ -290,11 +332,9 @@ class RwkvSelfAttention(nn.Module):
         self.receptance = nn.Linear(hidden_size, attention_hidden_size, bias=False)
         self.gate = nn.Linear(hidden_size, attention_hidden_size, bias=False)
         self.output = nn.Linear(attention_hidden_size, hidden_size, bias=False)
-        # https://github.com/BlinkDL/RWKV-LM/blob/3db37a72356b736966ddd377268f02b80963af3f/RWKV-v4neo/src/model.py#L190C1-L190C1
         self.ln_x = nn.GroupNorm(hidden_size // config.head_size, hidden_size)
 
-    # TODO: maybe jit, otherwise move inside forward
-    def extract_key_value(self, B, H, S, T, hidden, state=None):
+    def extract_key_value(self, hidden, state=None):
         # Mix hidden with the previous timestep to produce key, value, receptance
         if hidden.size(1) == 1 and state is not None:
             shifted = state[0][:, :, self.layer_id]
@@ -304,12 +344,41 @@ class RwkvSelfAttention(nn.Module):
                 shifted[:, 0] = state[0][:, :, self.layer_id]
         if len(shifted.size()) == 2:
             shifted = shifted.unsqueeze(1)
+        # xk = x * time_mix_k + state[i1] * (1 - time_mix_k)
+        # xv = x * time_mix_v + state[i1] * (1 - time_mix_v)
+        # xr = x * time_mix_r + state[i1] * (1 - time_mix_r)
+        # xg = x * time_mix_g + state[i1] * (1 - time_mix_g)
+
+        # r = (rw @ xr).view(H, 1, S)
+        # k = (kw @ xk).view(H, S, 1)
+        # v = (vw @ xv).view(H, 1, S)
+        # g = F.silu(gw @ xg)
+        # --------------------->
+        # sx = state[i1] - x
+        # xxx = x + sx * x_maa
+        # xxx = torch.tanh(xxx @ tm_w1).view(5, 1, -1)
+        # xxx = torch.bmm(xxx, tm_w2).view(5, -1)
+        # mw, mk, mv, mr, mg = xxx.unbind(dim=0)
+
+        # xw = x + sx * (w_maa + mw)
+        # xk = x + sx * (k_maa + mk)
+        # xv = x + sx * (v_maa + mv)
+        # xr = x + sx * (r_maa + mr)
+        # xg = x + sx * (g_maa + mg)
+
+        # w = (time_decay + (torch.tanh(xw @ td_w1) @ td_w2).float()).view(H, S, 1)
+        # w = torch.exp(-torch.exp(w.float()))
+
+        # r = (rw @ xr).view(H, 1, S)
+        # k = (kw @ xk).view(H, S, 1)
+        # v = (vw @ xv).view(H, 1, S)
+        # g = F.silu(gw @ xg)
+
         key = hidden * self.time_mix_key + shifted * (1 - self.time_mix_key)
         value = hidden * self.time_mix_value + shifted * (1 - self.time_mix_value)
         receptance = hidden * self.time_mix_receptance + shifted * (1 - self.time_mix_receptance)
         gate = hidden * self.time_mix_gate + shifted * (1 - self.time_mix_gate)
 
-        # https://github.com/BlinkDL/ChatRWKV/blob/main/rwkv_pip_package/src/rwkv/model.py#L693
         key = self.key(key)
         value = self.value(value)
         receptance = self.receptance(receptance)
@@ -321,19 +390,9 @@ class RwkvSelfAttention(nn.Module):
         return receptance, key, value, gate, state
 
     def forward(self, hidden, state=None, use_cache=False, seq_mode=True):
-        B = hidden.shape[0]
-        H = self.time_decay.shape[0]
-        S = hidden.shape[-1] // H
-        T = hidden.shape[1]
-
-        receptance, key, value, gate, state = self.extract_key_value(B, H, S, T, hidden, state=state)
+        receptance, key, value, gate, state = self.extract_key_value(hidden, state=state)
         layer_state = state[1][:, :, :, :, self.layer_id] if state is not None else None
         rwkv, layer_state = rwkv_linear_attention(
-            B,
-            H,
-            S,
-            T,
-            self.num_attention_heads,
             hidden,
             self.time_decay,
             self.time_faaaa,
@@ -359,7 +418,6 @@ class RwkvFeedForward(nn.Module):
         self.config = config
         self.layer_id = layer_id
         hidden_size = config.hidden_size
-        # https://github.com/BlinkDL/RWKV-LM/blob/3db37a72356b736966ddd377268f02b80963af3f/RWKV-v4neo/train.py#L168
         intermediate_size = (
             config.intermediate_size
             if config.intermediate_size is not None
@@ -396,7 +454,8 @@ class RwkvFeedForward(nn.Module):
         return receptance * value, state
 
 
-class RwkvBlock(nn.Module):
+# copied from HuggingFace https://github.com/huggingface/transformers/blob/main/src/transformers/models/rwkv/modeling_rwkv.py
+class Rwkv6Block(nn.Module):
     def __init__(self, config, layer_id):
         super().__init__()
         self.config = config
@@ -429,15 +488,15 @@ class RwkvBlock(nn.Module):
         return outputs
 
 
-class Rwkv5PreTrainedModel(PreTrainedModel):
+class Rwkv6PreTrainedModel(PreTrainedModel):
     """
     An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
     models.
     """
 
-    config_class = Rwkv5Config
+    config_class = Rwkv6Config
     base_model_prefix = "rwkv"
-    _no_split_modules = ["RwkvBlock"]
+    _no_split_modules = ["Rwkv6Block"]
     _keep_in_fp32_modules = ["time_decay", "time_first"]
     supports_gradient_checkpointing = True
 
@@ -460,7 +519,6 @@ class Rwkv5PreTrainedModel(PreTrainedModel):
             )
             time_weight = time_weight[None, None, :]
 
-            # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L398
             decay_speed = [
                 -6.0 + 5.0 * (h / (attention_hidden_size - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
                 for h in range(attention_hidden_size)
@@ -503,8 +561,9 @@ class Rwkv5PreTrainedModel(PreTrainedModel):
                 module.time_mix_receptance.data = torch.pow(time_weight, ratio_1_to_almost0)
 
 
+# copied from HuggingFace https://github.com/huggingface/transformers/blob/main/src/transformers/models/rwkv/modeling_rwkv.py
 @dataclass
-class Rwkv5Output(ModelOutput):
+class Rwkv6Output(ModelOutput):
     """
     Class for the RWKV model outputs.
 
@@ -530,8 +589,9 @@ class Rwkv5Output(ModelOutput):
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
+# copied from HuggingFace https://github.com/huggingface/transformers/blob/main/src/transformers/models/rwkv/modeling_rwkv.py
 @dataclass
-class Rwkv5CausalLMOutput(ModelOutput):
+class Rwkv6CausalLMOutput(ModelOutput):
     """
     Base class for causal language model (or autoregressive) outputs.
 
@@ -568,7 +628,7 @@ RWKV_START_DOCSTRING = r"""
     general usage and behavior.
 
     Parameters:
-        config ([`Rwkv5Config`]): Model configuration class with all the parameters of the model.
+        config ([`Rwkv6Config`]): Model configuration class with all the parameters of the model.
             Initializing with a config file does not load the weights associated with the model, only the
             configuration. Check out the [`~PreTrainedModel.from_pretrained`] method to load the model weights.
 """
@@ -606,12 +666,12 @@ RWKV_INPUTS_DOCSTRING = r"""
     "The bare RWKV Model transformer outputting raw hidden-states without any specific head on top.",
     RWKV_START_DOCSTRING,
 )
-class Rwkv5Model(Rwkv5PreTrainedModel):
+class Rwkv6Model(Rwkv6PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
         self.embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.blocks = nn.ModuleList([RwkvBlock(config, layer_id=idx) for idx in range(config.num_hidden_layers)])
+        self.blocks = nn.ModuleList([Rwkv6Block(config, layer_id=idx) for idx in range(config.num_hidden_layers)])
         self.ln_out = nn.LayerNorm(config.hidden_size)
 
         self.layers_are_rescaled = False
@@ -629,7 +689,7 @@ class Rwkv5Model(Rwkv5PreTrainedModel):
     @add_start_docstrings_to_model_forward(RWKV_INPUTS_DOCSTRING)
     @add_code_sample_docstrings(
         checkpoint=_CHECKPOINT_FOR_DOC,
-        output_type=Rwkv5Output,
+        output_type=Rwkv6Output,
         config_class=_CONFIG_FOR_DOC,
     )
     def forward(
@@ -642,12 +702,12 @@ class Rwkv5Model(Rwkv5PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, Rwkv5Output]:
+    ) -> Union[Tuple, Rwkv6Output]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        # rwkv5 only support inference in huggingface.
+        # rwkv6 only support inference in huggingface.
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -665,39 +725,35 @@ class Rwkv5Model(Rwkv5PreTrainedModel):
             inputs_embeds = self.embeddings(input_ids)
 
         if use_cache and state is None:
-            # https://github.com/BlinkDL/ChatRWKV/blob/main/rwkv_pip_package/src/rwkv/model.py#L904-L906
             state = []
             num_attention_heads = self.config.hidden_size // self.config.num_attention_heads
-            state.append(
-                torch.zeros(
-                    (inputs_embeds.size(0), self.config.hidden_size, self.config.num_hidden_layers),
-                    dtype=inputs_embeds.dtype,
-                    requires_grad=False,
-                    device=inputs_embeds.device,
-                ).contiguous()
-            )
-            state.append(
-                torch.zeros(
-                    (
-                        inputs_embeds.size(0),
-                        num_attention_heads,
-                        self.config.hidden_size // num_attention_heads,
-                        self.config.hidden_size // num_attention_heads,
-                        self.config.num_hidden_layers,
-                    ),
-                    dtype=torch.float32,
-                    requires_grad=False,
-                    device=inputs_embeds.device,
-                ).contiguous()
-            )
-            state.append(
-                torch.zeros(
-                    (inputs_embeds.size(0), self.config.hidden_size, self.config.num_hidden_layers),
-                    dtype=inputs_embeds.dtype,
-                    requires_grad=False,
-                    device=inputs_embeds.device,
-                ).contiguous()
-            )
+            state_attn_x = torch.zeros(
+                (inputs_embeds.size(0), self.config.hidden_size, self.config.num_hidden_layers),
+                dtype=inputs_embeds.dtype,
+                requires_grad=False,
+                device=inputs_embeds.device,
+            ).contiguous()
+            state_attn_kv = torch.zeros(
+                (
+                    inputs_embeds.size(0),
+                    num_attention_heads,
+                    self.config.hidden_size // num_attention_heads,
+                    self.config.hidden_size // num_attention_heads,
+                    self.config.num_hidden_layers,
+                ),
+                dtype=torch.float32,
+                requires_grad=False,
+                device=inputs_embeds.device,
+            ).contiguous()
+            state_ffn_x = torch.zeros(
+                (inputs_embeds.size(0), self.config.hidden_size, self.config.num_hidden_layers),
+                dtype=inputs_embeds.dtype,
+                requires_grad=False,
+                device=inputs_embeds.device,
+            ).contiguous()
+            state.append(state_attn_x)
+            state.append(state_attn_kv)
+            state.append(state_ffn_x)
 
         seq_mode = inputs_embeds.shape[1] > 1
         hidden_states = inputs_embeds
@@ -729,7 +785,7 @@ class Rwkv5Model(Rwkv5PreTrainedModel):
         if not return_dict:
             return (hidden_states, state, all_hidden_states, all_self_attentions)
 
-        return Rwkv5Output(
+        return Rwkv6Output(
             last_hidden_state=hidden_states,
             state=state,
             hidden_states=all_hidden_states,  # None
@@ -752,20 +808,42 @@ class Rwkv5Model(Rwkv5PreTrainedModel):
 
         self.layers_are_rescaled = not self.training
 
+    def _bnb_4bit_dequantize_and_rescale(self, target_layer, block_id):
+        r"""
+        Perform the dequantization and rescaling of the weights of a given layer. After that operation the layer will
+        be quantized again.
+        """
+        if not is_bitsandbytes_available():
+            raise ImportError("Please install bitsandbytes to use this method.")
+        import bitsandbytes as bnb
 
+        dequant_weights = bnb.functional.dequantize_4bit(target_layer.weight.data, target_layer.weight.quant_state)
+
+        dequant_weights.div_(2 ** int(block_id // self.config.rescale_every))
+
+        # re-quantize the model:
+        # we need to put it first on CPU then back to the device
+        # this will create an overhead :/
+        # We set requires_grad=False as we cannot compute gradients on top of 4bit parameters anyway and to avoid
+        # bugs with bnb
+        quant_weight = bnb.nn.Params4bit(dequant_weights.to("cpu"), requires_grad=False).to(dequant_weights.device)
+        setattr(target_layer, "weight", quant_weight)
+
+
+# copied from HuggingFace https://github.com/huggingface/transformers/blob/main/src/transformers/models/rwkv/modeling_rwkv.py
 @add_start_docstrings(
     """
-    The RWKV Model transformer with a language modeling head on top (linear layer with weights tied to the input
+    The RWKV6 Model transformer with a language modeling head on top (linear layer with weights tied to the input
     embeddings).
     """,
     RWKV_START_DOCSTRING,
 )
-class Rwkv5ForCausalLM(Rwkv5PreTrainedModel):
+class Rwkv6ForCausalLM(Rwkv6PreTrainedModel):
     _tied_weights_keys = ["head.weight"]
 
     def __init__(self, config):
         super().__init__(config)
-        self.rwkv = Rwkv5Model(config)
+        self.rwkv = Rwkv6Model(config)
         self.head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
@@ -794,7 +872,7 @@ class Rwkv5ForCausalLM(Rwkv5PreTrainedModel):
     @add_start_docstrings_to_model_forward(RWKV_INPUTS_DOCSTRING)
     @add_code_sample_docstrings(
         checkpoint=_CHECKPOINT_FOR_DOC,
-        output_type=Rwkv5CausalLMOutput,
+        output_type=Rwkv6CausalLMOutput,
         config_class=_CONFIG_FOR_DOC,
     )
     def forward(
@@ -808,7 +886,7 @@ class Rwkv5ForCausalLM(Rwkv5PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, Rwkv5CausalLMOutput]:
+    ) -> Union[Tuple, Rwkv6CausalLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
@@ -845,7 +923,7 @@ class Rwkv5ForCausalLM(Rwkv5PreTrainedModel):
             output = (logits,) + rwkv_outputs[1:]
             return ((loss,) + output) if loss is not None else output
 
-        return Rwkv5CausalLMOutput(
+        return Rwkv6CausalLMOutput(
             loss=loss,
             logits=logits,
             state=rwkv_outputs.state,
