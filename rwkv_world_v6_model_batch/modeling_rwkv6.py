@@ -130,67 +130,38 @@ class Rwkv6LinearAttention(torch.autograd.Function):
             g_time_first = torch.sum(g_time_first, 0).view(NumHeads, HeadSize)
             return (None, None, None, None, g_receptance, g_key, g_value, g_time_decay, g_time_first, None)
 
-def rwkv_linear_attention_v6_cpu(
-    B,
-    H,
-    S,
-    T,
-    n_head,
-    hidden,
-    time_decay,
-    time_first,
-    receptance,
-    key,
-    value,
-    gate,
-    lxw,
-    lxb,
-    ow,
-    state,
-):
-    key = key.to(torch.float32).view(B, T, H, S).transpose(1, 2).transpose(-2, -1)
-    value = value.to(torch.float32).view(B, T, H, S).transpose(1, 2)
-    receptance = receptance.to(torch.float32).view(B, T, H, S).transpose(1, 2)
-    time_decay = torch.exp(-torch.exp(time_decay.float())).view(B, T, H, S).permute(0, 2, 3, 1) # B, H, S, T
-    time_first = time_first.float().reshape(-1, 1, 1).reshape(n_head, -1, 1)
-    lxw = lxw.float()
-    lxb = lxb.float()
-    out = torch.zeros_like(key).reshape(B, T, H, S)
-    for t in range(T):
-        rt = receptance[:, :, t : t + 1, :]
-        kt = key[:, :, :, t : t + 1]
-        vt = value[:, :, t : t + 1, :]
-        wt = time_decay[:, :, :, t : t + 1]
-        at = kt @ vt
-        out[:, t] = (rt @ (time_first * at + state)).squeeze(2)
-        with torch.no_grad():
-            state = at + wt * state
+def rwkv6_linear_attention_cpu(receptance, key, value, time_decay, time_first, state):
+    input_dtype = receptance.dtype
+    # For CPU fallback. Will be slower and probably take more memory than the custom CUDA kernel if not executed
+    # within a torch.no_grad.
+    batch, seq_length, hidden_size = receptance.shape
+    num_heads, head_size = time_first.shape
+    key = key.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2).transpose(-2, -1)
+    value = value.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2)
+    receptance = receptance.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2)
+    time_decay = torch.exp(-torch.exp(time_decay.float())).view(batch, seq_length, num_heads, head_size).permute(0, 2, 3, 1) # B, H, S, T
+    time_first = time_first.float().reshape(-1, 1, 1).reshape(num_heads, -1, 1)
+    out = torch.zeros_like(key).reshape(batch, seq_length, num_heads, head_size)
 
-    out = out.reshape(B * T, H * S)
-    out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
-    out = out.to(dtype=hidden.dtype) * gate
-    out = out @ ow
+    for current_index in range(seq_length):
+        current_receptance = receptance[:, :, current_index:current_index+1, :]
+        current_key = key[:, :, :, current_index:current_index+1]
+        current_value = value[:, :, current_index:current_index+1, :]
+        current_time_decay = time_decay[:, :, :, current_index:current_index+1]
+        attention_output = current_key @ current_value
+        out[:, current_index] = (current_receptance @ (time_first * attention_output + state)).squeeze(2)
+        with torch.no_grad():
+            state = attention_output + current_time_decay * state
 
     return out, state
 
-
-def rwkv_linear_attention(
+def rwkv6_linear_attention(
     training,
-    B,
-    H,
-    S,
-    T,
-    n_head,
-    hidden,
-    time_decay,
-    time_first,
     receptance,
     key,
     value,
-    gate,
-    lxw,
-    lxb,
-    ow,
+    time_decay,
+    time_first,
     state,
 ):
     no_cuda = any(t.device.type != "cuda" for t in [time_decay, time_first, receptance, key, value])
@@ -198,31 +169,11 @@ def rwkv_linear_attention(
     # in this case).
     one_token = key.size(1) == 1
     if not training or rwkv6_cuda_kernel is None or no_cuda or one_token:
-        return rwkv_linear_attention_v6_cpu(
-            B,
-            H,
-            S,
-            T,
-            n_head,
-            hidden,
-            time_decay,
-            time_first,
-            receptance,
-            key,
-            value,
-            gate,
-            lxw,
-            lxb,
-            ow,
-            state,
+        return rwkv6_linear_attention_cpu(
+            receptance, key, value, time_decay, time_first, state
         )
     else:
-        out, state = WKV_6.apply(B, T, H * S, H, receptance, key, value, time_decay, time_first, state)
-        out = out.reshape(B * T, H * S)
-        out = F.group_norm(out, num_groups=H, weight=lxw, bias=lxb).reshape(B, T, H * S)
-        out = out.to(dtype=hidden.dtype) * gate
-        out = out @ ow
-        return out, state
+        return Rwkv6LinearAttention.apply(receptance, key, value, time_decay, time_first, state)
 
 
 class Rwkv6SelfAttention(nn.Module):
@@ -241,7 +192,6 @@ class Rwkv6SelfAttention(nn.Module):
         self.attention_hidden_size = attention_hidden_size
         head_size = config.head_size
         num_heads = attention_hidden_size // head_size
-        self.num_attention_heads = num_heads
 
         self.time_maa_x = nn.Parameter(torch.empty(1, 1, hidden_size))
         self.time_maa_w = nn.Parameter(torch.empty(1, 1, hidden_size))
@@ -312,37 +262,25 @@ class Rwkv6SelfAttention(nn.Module):
         return receptance, key, value, gate, time_decay, state
 
     def forward(self, hidden, state=None, use_cache=False, seq_mode=True):
-        B = hidden.shape[0]
-        H = self.time_faaaa.shape[0]
-        S = hidden.shape[-1] // H
-        T = hidden.shape[1]
-
         receptance, key, value, gate, time_decay, state = self.extract_key_value(hidden, state=state)
+
+        B,T,C = receptance.shape
+        H, S = self.time_faaaa.shape
+
         layer_state = state[1][:, :, :, :, self.layer_id] if state is not None else None
-        rwkv, layer_state = rwkv_linear_attention(
-            self.training,
-            B,
-            H,
-            S,
-            T,
-            self.num_attention_heads,
-            hidden,
-            time_decay,
-            self.time_faaaa,
-            receptance,
-            key,
-            value,
-            gate,
-            self.ln_x.weight,
-            self.ln_x.bias,
-            self.output.weight.t(),
-            state=layer_state,
+        out, layer_state = rwkv6_linear_attention(
+            self.training, receptance, key, value, time_decay, self.time_faaaa, layer_state,
         )
 
         if layer_state is not None:
             state[1][:, :, :, :, self.layer_id] = layer_state
 
-        return rwkv, state
+        out = out.reshape(B * T, H * S)
+        out = F.group_norm(out, num_groups=H, weight=self.ln_x.weight.to(out.dtype), bias=self.ln_x.bias.to(out.dtype)).reshape(B, T, H * S)
+        out = out.to(dtype=hidden.dtype) * gate
+        out = self.output(out)
+
+        return out, state
 
 
 class Rwkv6FeedForward(nn.Module):
