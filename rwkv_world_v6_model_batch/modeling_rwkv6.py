@@ -179,6 +179,7 @@ def rwkv_linear_attention_v6_cpu(
 
 
 def rwkv_linear_attention(
+    training,
     B,
     H,
     S,
@@ -200,7 +201,7 @@ def rwkv_linear_attention(
     # Launching the CUDA kernel for just one token will actually be slower (there is no for loop in the CPU version
     # in this case).
     one_token = key.size(1) == 1
-    if rwkv6_cuda_kernel is None or no_cuda or one_token:
+    if not training or rwkv6_cuda_kernel is None or no_cuda or one_token:
         return rwkv_linear_attention_v6_cpu(
             B,
             H,
@@ -325,6 +326,7 @@ class RwkvSelfAttention(nn.Module):
         receptance, key, value, gate, time_decay, state = self.extract_key_value(B, H, S, T, hidden, state=state)
         layer_state = state[1][:, :, :, :, self.layer_id] if state is not None else None
         rwkv, layer_state = rwkv_linear_attention(
+            self.training,
             B,
             H,
             S,

@@ -105,6 +105,7 @@ class Rwkv5LinearAttention(torch.autograd.Function):
                 dtype=torch.bfloat16,
                 memory_format=torch.contiguous_format,
             )
+            state = state.clone()
             rwkv5_cuda_kernel.forward_bf16(
                 batch,
                 seq_length,
@@ -217,12 +218,12 @@ def rwkv5_linear_attention_cpu(receptance, key, value, time_decay, time_first, s
     return out.to(input_dtype), state
 
 # copied from RWKV but with receptance
-def RWKV5_linear_attention(receptance, key, value, time_decay, time_first, state):
+def RWKV5_linear_attention(training, receptance, key, value, time_decay, time_first, state):
     no_cuda = any(t.device.type != "cuda" for t in [time_decay, time_first, key, value])
     # Launching the CUDA kernel for just one token will actually be slower (there is no for loop in the CPU version
     # in this case).
     one_token = key.size(1) == 1
-    if rwkv5_cuda_kernel is None or no_cuda or one_token:
+    if not training or rwkv5_cuda_kernel is None or no_cuda or one_token:
         return rwkv5_linear_attention_cpu(
             receptance, key, value, time_decay, time_first, state
         )
@@ -299,7 +300,7 @@ class Rwkv5SelfAttention(nn.Module):
 
         layer_state = state[1][:, :, :, :, self.layer_id] if state is not None else None
         out, layer_state = RWKV5_linear_attention(
-            receptance, key, value, self.time_decay, self.time_faaaa, layer_state
+            self.training, receptance, key, value, self.time_decay, self.time_faaaa, layer_state
         )
 
         if layer_state is not None:
