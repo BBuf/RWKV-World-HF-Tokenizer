@@ -26,13 +26,12 @@ from huggingface_hub import hf_hub_download
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerFast
 from transformers.modeling_utils import WEIGHTS_INDEX_NAME, shard_checkpoint
-from rwkv_world_v6_model_batch import configuration_rwkv6
+import configuration_rwkv6
 
 
 NUM_HIDDEN_LAYERS_MAPPING = {
     "169M": 12,
     "430M": 24,
-    "1B5": 24,
     "1B6": 24,
     "3B": 32,
     "7B": 32,
@@ -42,7 +41,6 @@ NUM_HIDDEN_LAYERS_MAPPING = {
 HIDEN_SIZE_MAPPING = {
     "169M": 768,
     "430M": 1024,
-    "1B5": 2048,
     "1B6": 2048,
     "3B": 2560,
     "7B": 4096,
@@ -63,6 +61,18 @@ def convert_state_dict(state_dict):
         name = re.sub(r"blocks\.(\d+)\.att", r"blocks.\1.attention", name)
         # ffn -> feed_forward
         name = re.sub(r"blocks\.(\d+)\.ffn", r"blocks.\1.feed_forward", name)
+        # time_maa_k -> time_maa_key and reshape
+        # if name.endswith(".time_maa_k"):
+        #     name = name.replace(".time_maa_k", ".time_maa_key")
+        # # time_maa_v -> time_maa_value and reshape
+        # if name.endswith(".time_maa_v"):
+        #     name = name.replace(".time_maa_v", ".time_maa_value")
+        # # time_maa_r -> time_maa_receptance and reshape
+        # if name.endswith(".time_maa_r"):
+        #     name = name.replace(".time_maa_r", ".time_maa_receptance")
+        # # time_maa_g -> time_maa_gate and reshape
+        # if name.endswith(".time_maa_g"):
+        #     name = name.replace(".time_maa_g", ".time_maa_gate")
 
         if name != "head.weight":
             name = "rwkv." + name

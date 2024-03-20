@@ -6,61 +6,15 @@
 
 - [RWKV/rwkv-5-world-1b5](https://huggingface.co/RWKV/rwkv-5-world-1b5)
 - [RWKV/rwkv-5-world-3b](https://huggingface.co/RWKV/rwkv-5-world-3b)
-- [RWKV/rwkv-5-world-169m](https://huggingface.co/RWKV/rwkv-5-world-169m)
 - [RWKV/rwkv-4-world-169m](https://huggingface.co/RWKV/rwkv-4-world-169m)
 - [RWKV/rwkv-4-world-430m](https://huggingface.co/RWKV/rwkv-4-world-430m)
 - [RWKV/rwkv-4-world-1b5](https://huggingface.co/RWKV/rwkv-4-world-1b5)
 - [RWKV/rwkv-4-world-3b](https://huggingface.co/RWKV/rwkv-4-world-3b)
 - [RWKV/rwkv-4-world-7b](https://huggingface.co/RWKV/rwkv-4-world-7b)
-### RWKV World Model's HuggingFace Version Tokenizer
-
-The reference program below compares the encoding and decoding results of the original tokenizer and the HuggingFace version tokenizer for different sentences.
-
-```python
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from rwkv_tokenizer import TRIE_TOKENIZER
-token_path = "/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer"
-
-origin_tokenizer = TRIE_TOKENIZER('/Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_vocab_v20230424.txt')
-
-from transformers import AutoTokenizer
-hf_tokenizer = AutoTokenizer.from_pretrained(token_path, trust_remote_code=True)
-
-# test encoder
-assert hf_tokenizer("Hello")['input_ids'] == origin_tokenizer.encode('Hello')
-assert hf_tokenizer("S:2")['input_ids'] == origin_tokenizer.encode('S:2')
-assert hf_tokenizer("Made in China")['input_ids'] == origin_tokenizer.encode('Made in China')
-assert hf_tokenizer("今天天气不错")['input_ids'] == origin_tokenizer.encode('今天天气不错')
-assert hf_tokenizer("男：听说你们公司要派你去南方工作?")['input_ids'] == origin_tokenizer.encode('男：听说你们公司要派你去南方工作?')
-
-# test decoder
-assert hf_tokenizer.decode(hf_tokenizer("Hello")['input_ids']) == 'Hello'
-assert hf_tokenizer.decode(hf_tokenizer("S:2")['input_ids']) == 'S:2'
-assert hf_tokenizer.decode(hf_tokenizer("Made in China")['input_ids']) == 'Made in China'
-assert hf_tokenizer.decode(hf_tokenizer("今天天气不错")['input_ids']) == '今天天气不错'
-assert hf_tokenizer.decode(hf_tokenizer("男：听说你们公司要派你去南方工作?")['input_ids']) == '男：听说你们公司要派你去南方工作?'
-```
 
 
 ### Huggingface RWKV World Model Convert
 
-Using the script `scripts/convert_rwkv4_model_to_hf.sh` , convert the PyTorch format model from the huggingface `BlinkDL/rwkv-4-world` project to the Huggingface format. Here, we take 0.1B as an example.
-
-```shell
-#!/bin/bash
-set -x
-
-cd scripts
-python convert_rwkv_checkpoint_to_hf.py --repo_id BlinkDL/rwkv-4-world \
- --checkpoint_file RWKV-4-World-0.1B-v1-20230520-ctx4096.pth \
- --output_dir ../rwkv4-world4-0.1b-model/ \
- --tokenizer_file /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch \
- --size 169M \
- --is_world_tokenizer True
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/rwkv_vocab_v20230424.txt ../rwkv4-world4-0.1b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/tokenization_rwkv_world.py ../rwkv4-world4-0.1b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/tokenizer_config.json ../rwkv4-world4-0.1b-model/
-```
 
 Using the script `scripts/convert_batch_rwkv5_world_model_to_hf.sh` , convert the PyTorch format model from the huggingface `BlinkDL/rwkv-5-world` project to the Huggingface format. Here, we take 3B as an example.
 
@@ -70,31 +24,31 @@ set -x
 
 cd scripts
 python convert_rwkv5_checkpoint_to_hf.py --repo_id BlinkDL/rwkv-5-world \
- --checkpoint_file RWKV-5-World-3B-v2-OnlyForTest_14%_trained-20231006-ctx4096.pth \
- --output_dir ../rwkv5-v2-world-3b-model/ \
- --tokenizer_file /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch \
+ --checkpoint_file RWKV-5-World-3B-v2-20231118-ctx16k.pth \
+ --output_dir ../../rwkv5-v2-world-3b-model/ \
+ --tokenizer_file ../rwkv5_model \
  --size 3B \
- --is_world_tokenizer True \
- --model_version "5_2"
+ --is_world_tokenizer True
 
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/rwkv_vocab_v20230424.txt ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/tokenization_rwkv_world.py ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/tokenizer_config.json ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/configuration_rwkv5.py ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/modeling_rwkv5.py ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model_batch/generation_config.json ../rwkv5-v2-world-3b-model/
+cp ../rwkv5_model/vocab.txt ../../rwkv5-v2-world-3b-model/
+cp ../rwkv5_model/tokenization_rwkv5.py ../../rwkv5-v2-world-3b-model/
+cp ../rwkv5_model/tokenizer_config.json ../../rwkv5-v2-world-3b-model/
+cp ../rwkv5_model/configuration_rwkv5.py ../../rwkv5-v2-world-3b-model/
+cp ../rwkv5_model/modeling_rwkv5.py ../../rwkv5-v2-world-3b-model/
+cp ../rwkv5_model/generation_config.json ../../rwkv5-v2-world-3b-model/
+
 ```
 
 Additionally, **you need to add the following lines at the beginning of the `config.json` file in the generated folder** :
 
 ```json
 "architectures": [
-    "RwkvForCausalLM"
-],
-"auto_map": {
-    "AutoConfig": "configuration_rwkv5.Rwkv5Config",
-    "AutoModelForCausalLM": "modeling_rwkv5.RwkvForCausalLM"
-},
+    "Rwkv5ForCausalLM"
+  ],
+  "auto_map": {
+      "AutoConfig": "configuration_rwkv5.Rwkv5Config",
+      "AutoModelForCausalLM": "modeling_rwkv5.Rwkv5ForCausalLM"
+  },
 ```
 
 ### Run Huggingface RWKV World Model
@@ -126,7 +80,7 @@ User: {instruction}
 Assistant:"""
 
 model = AutoModelForCausalLM.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True).to(torch.float32)
-tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True, padding_side='left')
 
 texts = ["请介绍北京的旅游景点", "介绍一下大熊猫", "乌兰察布"]
 prompts = [generate_prompt(text) for text in texts]
@@ -191,7 +145,7 @@ User: {instruction}
 Assistant:"""
 
 model = AutoModelForCausalLM.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True).to(torch.float32).to(0)
-tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True, padding_side='left')
 
 texts = ["请介绍北京的旅游景点", "介绍一下大熊猫", "乌兰察布"]
 prompts = [generate_prompt(text) for text in texts]

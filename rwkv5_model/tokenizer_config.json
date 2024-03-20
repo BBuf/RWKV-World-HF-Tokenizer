@@ -1,0 +1,23 @@
+{
+  "auto_map": {
+    "AutoTokenizer": [
+      "tokenization_rwkv5.Rwkv5Tokenizer",
+      null
+      ]
+  },
+  "added_tokens_decoder": {
+    "0": {
+      "content": "<s>",
+      "lstrip": false,
+      "normalized": true,
+      "rstrip": false,
+      "single_word": false,
+      "special": false
+    }
+  },
+  "bos_token": "<s>",
+  "clean_up_tokenization_spaces": true,
+  "eos_token": "<s>",
+  "model_max_length": 1000000000000000019884624838656,
+  "unk_token": "<s>"
+}

@@ -20,7 +20,7 @@ User: {instruction}
 Assistant:"""
 
 model = AutoModelForCausalLM.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True).to(torch.float32).to(0)
-tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("BBuf/rwkv-5-world-1b5", trust_remote_code=True, padding_side='left')
 
 texts = ["请介绍北京的旅游景点", "介绍一下大熊猫", "乌兰察布"]
 prompts = [generate_prompt(text) for text in texts]

@@ -448,7 +448,7 @@ class Rwkv6PreTrainedModel(PreTrainedModel):
             num_hidden_layers = module.config.num_hidden_layers
             hidden_size = module.config.hidden_size
             attention_hidden_size = module.attention_hidden_size
-            num_attention_heads = hidden_size // module.config.num_attention_heads
+            num_attention_heads = module.config.num_attention_heads
 
             ratio_0_to_1 = layer_id / (num_hidden_layers - 1)  # 0 to 1
             ratio_1_to_almost0 = 1.0 - (layer_id / num_hidden_layers)  # 1 to ~0
@@ -491,8 +491,8 @@ class Rwkv6PreTrainedModel(PreTrainedModel):
                 module.time_decay_w1.data = torch.zeros(hidden_size, TIME_DECAY_EXTRA_DIM, dtype=module.time_decay_w1.dtype, device=module.time_decay_w1.device).uniform_(-1e-4, 1e-4)
                 module.time_decay_w2.data = torch.zeros(TIME_DECAY_EXTRA_DIM, attention_hidden_size, dtype=module.time_decay_w2.dtype, device=module.time_decay_w2.device).uniform_(-1e-4, 1e-4)
 
-                module.time_decay.data = decay_speed.reshape(num_attention_heads, module.config.num_attention_heads)
-                module.time_faaaa.data = tmp.reshape(num_attention_heads, module.config.num_attention_heads)
+                module.time_decay.data = decay_speed.reshape(num_attention_heads, module.config.head_size)
+                module.time_faaaa.data = tmp.reshape(num_attention_heads, module.config.head_size)
 
         elif isinstance(module, RwkvFeedForward):
             layer_id = module.layer_id
@@ -677,7 +677,7 @@ class Rwkv6Model(Rwkv6PreTrainedModel):
         if use_cache and state is None:
             # https://github.com/BlinkDL/ChatRWKV/blob/main/rwkv_pip_package/src/rwkv/model.py#L904-L906
             state = []
-            num_attention_heads = self.config.hidden_size // self.config.num_attention_heads
+            num_attention_heads = self.config.hidden_size // self.config.head_size
             state.append(
                 torch.zeros(
                     (inputs_embeds.size(0), self.config.hidden_size, self.config.num_hidden_layers),
@@ -691,8 +691,8 @@ class Rwkv6Model(Rwkv6PreTrainedModel):
                     (
                         inputs_embeds.size(0),
                         num_attention_heads,
-                        self.config.hidden_size // num_attention_heads,
-                        self.config.hidden_size // num_attention_heads,
+                        self.config.head_size,
+                        self.config.head_size,
                         self.config.num_hidden_layers,
                     ),
                     dtype=torch.float32,

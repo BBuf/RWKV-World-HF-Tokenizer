@@ -1,0 +1,24 @@
+{
+  "architectures": [
+    "Rwkv6ForCausalLM"
+  ],
+  "auto_map": {
+      "AutoConfig": "configuration_rwkv6.Rwkv6Config",
+      "AutoModelForCausalLM": "modeling_rwkv6.Rwkv6ForCausalLM"
+  },
+  "attention_hidden_size": 2048,
+  "bos_token_id": 0,
+  "context_length": 4096,
+  "eos_token_id": 0,
+  "head_size": 64,
+  "hidden_size": 2048,
+  "intermediate_size": null,
+  "layer_norm_epsilon": 1e-05,
+  "model_type": "rwkv6",
+  "num_hidden_layers": 24,
+  "rescale_every": 6,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.33.1",
+  "use_cache": true,
+  "vocab_size": 65536
+}

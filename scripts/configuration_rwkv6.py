@@ -21,12 +21,12 @@ from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
-RWKV5_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
+RWKV6_PRETRAINED_CONFIG_ARCHIVE_MAP = {}
 
 
-class Rwkv5Config(PretrainedConfig):
+class Rwkv6Config(PretrainedConfig):
     """
-    This is the configuration class to store the configuration of a [`Rwkv5Model`]. It is used to instantiate a RWKV5
+    This is the configuration class to store the configuration of a [`Rwkv6Model`]. It is used to instantiate a RWKV6
     model according to the specified arguments, defining the model architecture. Instantiating a configuration with the
     defaults will yield a similar configuration to that of the RWVK-4
     [RWKV/rwkv-5-world-1b5](https://huggingface.co/RWKV/rwkv-5-world-1b5) architecture.
@@ -37,8 +37,8 @@ class Rwkv5Config(PretrainedConfig):
 
     Args:
         vocab_size (`int`, *optional*, defaults to 65536):
-            Vocabulary size of the RWKV5 model. Defines the number of different tokens that can be represented by the
-            `inputs_ids` passed when calling [`Rwkv5Model`].
+            Vocabulary size of the RWKV6 model. Defines the number of different tokens that can be represented by the
+            `inputs_ids` passed when calling [`Rwkv6Model`].
         hidden_size (`int`, *optional*, defaults to 768):
             Dimensionality of the embeddings and hidden states.
         num_hidden_layers (`int`, *optional*, defaults to 24):
@@ -46,17 +46,17 @@ class Rwkv5Config(PretrainedConfig):
         attention_hidden_size (`int`, *optional*):
             Dimensionality of the attention hidden states. Will default to `hidden_size` if unset.
         num_attention_heads (`int`, *optional*, defaults to 64):
-            The attention heads to use in rwkv5 self_attention module.
-        head_size (`int`, *optional*, defaults to 64): head_size of rwkv5 self_attention module.
+            The attention heads to use in rwkv6 self_attention module.
+        head_size (`int`, *optional*, defaults to 64): head_size of rwkv6 self_attention module.
         intermediate_size (`int`, *optional*):
             Dimensionality of the inner feed-forward layers. Will default to 4 times `hidden_size` if unset.
         layer_norm_epsilon (`float`, *optional*, defaults to 1e-05):
             The epsilon to use in the layer normalization layers.
         bos_token_id (`int`, *optional*, defaults to 0):
-            The id of the beginning of sentence token in the vocabulary. Defaults to 0 as RWKV5 uses the same tokenizer
+            The id of the beginning of sentence token in the vocabulary. Defaults to 0 as RWKV6 uses the same tokenizer
             as GPTNeoX.
         eos_token_id (`int`, *optional*, defaults to 0):
-            The id of the end of sentence token in the vocabulary. Defaults to 0 as RWKV5 uses the same tokenizer as
+            The id of the end of sentence token in the vocabulary. Defaults to 0 as RWKV6 uses the same tokenizer as
             GPTNeoX.
         rescale_every (`int`, *optional*, defaults to 6):
             At inference, the hidden states (and weights of the correponding output layers) are divided by 2 every
@@ -70,19 +70,19 @@ class Rwkv5Config(PretrainedConfig):
     Example:
 
     ```python
-    >>> from transformers import Rwkv5Config, Rwkv5Model
+    >>> from transformers import Rwkv6Config, Rwkv6Model
 
-    >>> # Initializing a Rwkv5 configuration
-    >>> configuration = Rwkv5Config()
+    >>> # Initializing a Rwkv6 configuration
+    >>> configuration = Rwkv6Config()
 
     >>> # Initializing a model (with random weights) from the configuration
-    >>> model = Rwkv5Model(configuration)
+    >>> model = Rwkv6Model(configuration)
 
     >>> # Accessing the model configuration
     >>> configuration = model.config
     ```"""
 
-    model_type = "rwkv5"
+    model_type = "rwkv6"
 
     def __init__(
         self,
@@ -92,6 +92,7 @@ class Rwkv5Config(PretrainedConfig):
         attention_hidden_size=None,
         num_attention_heads=64,
         head_size=64,
+        head_size_divisor=8,
         intermediate_size=None,
         layer_norm_epsilon=1e-5,
         bos_token_id=0,
@@ -107,6 +108,7 @@ class Rwkv5Config(PretrainedConfig):
         self.attention_hidden_size = attention_hidden_size if attention_hidden_size is not None else hidden_size
         self.num_attention_heads = num_attention_heads
         self.head_size = head_size
+        self.head_size_divisor = head_size_divisor
         self.intermediate_size = None
         self.layer_norm_epsilon = layer_norm_epsilon
         self.rescale_every = rescale_every

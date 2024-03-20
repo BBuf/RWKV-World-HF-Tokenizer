@@ -2,16 +2,16 @@
 set -x
 
 cd scripts
-python convert_rwkv5_checkpoint_to_hf.py --repo_id BlinkDL/rwkv-5-world \
- --checkpoint_file RWKV-5-World-3B-v2-OnlyForTest_14%_trained-20231006-ctx4096.pth \
- --output_dir ../rwkv5-v2-world-3b-model/ \
- --tokenizer_file /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer \
- --size 3B \
- --is_world_tokenizer Tru
+python convert_rwkv5_checkpoint_to_hf.py --repo_id RWKV/v5-Eagle-7B \
+ --checkpoint_file RWKV-v5-Eagle-World-7B-v2-20240128-ctx4096.pth \
+ --output_dir ../../rwkv_model/v5-Eagle-7B/ \
+ --tokenizer_file ../rwkv5_model \
+ --size 7B \
+ --is_world_tokenizer True
 
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/rwkv_vocab_v20230424.txt ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenization_rwkv_world.py ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_tokenizer/tokenizer_config.json ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model/configuration_rwkv5.py ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model/modeling_rwkv5.py ../rwkv5-v2-world-3b-model/
-cp /Users/bbuf/工作目录/RWKV/RWKV-World-HF-Tokenizer/rwkv_world_v5_model/generation_config.json ../rwkv5-v2-world-3b-model/
+cp ../rwkv5_model/vocab.txt ../../rwkv_model/v5-Eagle-7B/
+cp ../rwkv5_model/tokenization_rwkv5.py ../../rwkv_model/v5-Eagle-7B/
+cp ../rwkv5_model/tokenizer_config.json ../../rwkv_model/v5-Eagle-7B/
+cp ../rwkv5_model/configuration_rwkv5.py ../../rwkv_model/v5-Eagle-7B/
+cp ../rwkv5_model/modeling_rwkv5.py ../../rwkv_model/v5-Eagle-7B/
+cp ../rwkv5_model/generation_config.json ../../rwkv_model/v5-Eagle-7B/
