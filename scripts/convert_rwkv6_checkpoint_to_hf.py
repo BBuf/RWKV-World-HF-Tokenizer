@@ -32,7 +32,7 @@ import configuration_rwkv6
 NUM_HIDDEN_LAYERS_MAPPING = {
     "169M": 12,
     "430M": 24,
-    "1B5": 24,
+    "1B6": 24,
     "3B": 32,
     "7B": 32,
     "14B": 40,
@@ -41,7 +41,7 @@ NUM_HIDDEN_LAYERS_MAPPING = {
 HIDEN_SIZE_MAPPING = {
     "169M": 768,
     "430M": 1024,
-    "1B5": 2048,
+    "1B6": 2048,
     "3B": 2560,
     "7B": 4096,
     "14B": 5120,
