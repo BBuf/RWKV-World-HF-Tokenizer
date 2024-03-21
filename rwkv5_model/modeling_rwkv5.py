@@ -220,11 +220,6 @@ def rwkv_linear_attention_v5_cpu(
         kt = key[:, :, :, t : t + 1]
         vt = value[:, :, t : t + 1, :]
         at = kt @ vt
-        print('time_first.shape: ', time_first.shape)
-        print('at.shape: ', at.shape)
-        print('state.shape: ', state.shape)
-        print('(time_first * at).shape: ', (time_first * at).shape)
-        import sys; sys.exit()
         out[:, t] = (rt @ (time_first * at + state)).squeeze(2)
         with torch.no_grad():
             state = at + time_decay * state
