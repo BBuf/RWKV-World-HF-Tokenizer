@@ -1,7 +1,24 @@
-### Run Huggingface RWKV5 World Model
+---
+license: apache-2.0
+---
 
+![An eagle soaring above a transformer robot](https://substackcdn.com/image/fetch/w_1456,c_limit,f_webp,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F6bbd31a7-21b4-4ff6-b43f-8735d1decf25_2048x1652.png)
 
-#### CPU
+### Huggingface RWKV-5 Eagle 7B Model - via HF Transformers Library
+
+> **! Important Note !**
+>
+> The following is the HF transformers implementation of the RWKV-5 Eagle 7B model. **This is meant to be used with the huggingface transformers**
+>
+> For the full model weights on its own, to use with other RWKV libraries, refer to [here](https://huggingface.co/RWKV/v5-Eagle-7B)
+>
+> This is not an instruct tune model! (soon...)
+
+- [HF Demo](https://huggingface.co/spaces/BlinkDL/RWKV-Gradio-2)
+- [Our wiki](https://wiki.rwkv.com)
+- [pth model weights](https://huggingface.co/RWKV/v5-Eagle-7B)
+
+#### Running on CPU via HF transformers
 
 ```python
 import torch
@@ -26,8 +43,8 @@ User: {instruction}
 Assistant:"""
 
 
-model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True).to(torch.float32)
-tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, padding_side='left')
+model = AutoModelForCausalLM.from_pretrained("RWKV/HF_v5-Eagle-7B", trust_remote_code=True).to(torch.float32)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/HF_v5-Eagle-7B", trust_remote_code=True)
 
 text = "请介绍北京的旅游景点"
 prompt = generate_prompt(text)
@@ -57,7 +74,7 @@ Assistant: 北京是中国的首都，拥有众多的旅游景点，以下是其
 8. 天坛：是中国古代皇家
 ```
 
-#### GPU
+#### Running on GPU via HF transformers
 
 ```python
 import torch
@@ -82,8 +99,8 @@ User: {instruction}
 Assistant:"""
 
 
-model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, torch_dtype=torch.float16).to(0)
-tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, padding_side='left')
+model = AutoModelForCausalLM.from_pretrained("RWKV/HF_v5-Eagle-7B", trust_remote_code=True, torch_dtype=torch.float16).to(0)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/HF_v5-Eagle-7B", trust_remote_code=True)
 
 text = "介绍一下大熊猫"
 prompt = generate_prompt(text)
@@ -129,8 +146,8 @@ User: {instruction}
 
 Assistant:"""
 
-model = AutoModelForCausalLM.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True).to(torch.float32)
-tokenizer = AutoTokenizer.from_pretrained("RWKV/rwkv-5-world-3b", trust_remote_code=True, padding_side='left')
+model = AutoModelForCausalLM.from_pretrained("RWKV/HF_v5-Eagle-7B", trust_remote_code=True).to(torch.float32)
+tokenizer = AutoTokenizer.from_pretrained("RWKV/HF_v5-Eagle-7B", trust_remote_code=True)
 
 texts = ["请介绍北京的旅游景点", "介绍一下大熊猫", "乌兰察布"]
 prompts = [generate_prompt(text) for text in texts]

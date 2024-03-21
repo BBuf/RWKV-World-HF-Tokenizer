@@ -92,6 +92,7 @@ class Rwkv6Config(PretrainedConfig):
         attention_hidden_size=None,
         num_attention_heads=64,
         head_size=64,
+        head_size_divisor=8,
         intermediate_size=None,
         layer_norm_epsilon=1e-5,
         bos_token_id=0,
@@ -107,6 +108,7 @@ class Rwkv6Config(PretrainedConfig):
         self.attention_hidden_size = attention_hidden_size if attention_hidden_size is not None else hidden_size
         self.num_attention_heads = num_attention_heads
         self.head_size = head_size
+        self.head_size_divisor = head_size_divisor
         self.intermediate_size = None
         self.layer_norm_epsilon = layer_norm_epsilon
         self.rescale_every = rescale_every

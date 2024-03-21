@@ -87,7 +87,7 @@ def convert_rwkv_checkpoint_to_hf_format(
     local_model_file=None, size=None, 
     tokenizer_file=None, push_to_hub=False, 
     model_name=None, is_world_tokenizer=False, 
-    model_version="5_2",
+    model_version="6_0",
 ):
     # 1. If possible, build the tokenizer.
     if tokenizer_file is None:
