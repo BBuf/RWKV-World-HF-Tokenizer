@@ -82,7 +82,7 @@ def load_wkv6_cuda_kernel(head_size, ctx_len):
 
 class Rwkv6LinearAttention(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, B, T, C, H, r, k, v, w, u, s):
+    def forward(ctx, receptance, key, value, time_decay, time_first, state):
         with torch.no_grad():
             assert receptance.dtype == torch.bfloat16
             assert key.dtype == torch.bfloat16
@@ -221,8 +221,7 @@ class Rwkv6SelfAttention(nn.Module):
         self.output = nn.Linear(attention_hidden_size, hidden_size, bias=False)
         self.ln_x = nn.GroupNorm(num_heads, hidden_size, eps=(1e-5)*(config.head_size_divisor**2))
 
-    # TODO: maybe jit, otherwise move inside forward
-    def extract_key_value(self, B, H, S, T, hidden, state=None):
+    def extract_key_value(self, hidden, state=None):
         # Mix hidden with the previous timestep to produce key, value, receptance
         if hidden.size(1) == 1 and state is not None:
             shifted = state[0][:, :, self.layer_id]
@@ -394,7 +393,6 @@ class Rwkv6PreTrainedModel(PreTrainedModel):
             )
             time_weight = time_weight[None, None, :]
 
-            # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L398
             decay_speed = [
                 -6.0 + 5.0 * (h / (attention_hidden_size - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
                 for h in range(attention_hidden_size)
