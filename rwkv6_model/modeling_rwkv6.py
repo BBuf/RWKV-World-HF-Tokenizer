@@ -153,7 +153,7 @@ def rwkv6_linear_attention_cpu(receptance, key, value, time_decay, time_first, s
         with torch.no_grad():
             state = attention_output + current_time_decay * state
 
-    return out.to(input_dtype), state
+    return out, state
 
 def rwkv6_linear_attention(
     training,
@@ -276,8 +276,8 @@ class Rwkv6SelfAttention(nn.Module):
             state[1][:, :, :, :, self.layer_id] = layer_state
 
         out = out.reshape(B * T, H * S)
-        out = self.ln_x(out)
-        out = out * gate
+        out = F.group_norm(out, num_groups=H, weight=self.ln_x.weight.to(out.dtype), bias=self.ln_x.bias.to(out.dtype), eps=self.ln_x.eps).reshape(B, T, H * S)
+        out = out.to(dtype=hidden.dtype) * gate
         out = self.output(out)
         return out, state
 
