@@ -82,7 +82,7 @@ def load_wkv6_cuda_kernel(head_size, ctx_len):
 
 class Rwkv6LinearAttention(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, receptance, key, value, time_decay, time_first, state):
+    def forward(ctx, B, T, C, H, r, k, v, w, u, s):
         with torch.no_grad():
             assert receptance.dtype == torch.bfloat16
             assert key.dtype == torch.bfloat16
@@ -211,16 +211,18 @@ class Rwkv6SelfAttention(nn.Module):
         self.time_decay_w2 = nn.Parameter(torch.empty(TIME_DECAY_EXTRA_DIM, attention_hidden_size))
 
         self.time_faaaa = nn.Parameter(torch.empty(num_heads, config.head_size))
+
         
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
+        self.receptance = nn.Linear(hidden_size, attention_hidden_size, bias=False)
         self.key = nn.Linear(hidden_size, attention_hidden_size, bias=False)
         self.value = nn.Linear(hidden_size, attention_hidden_size, bias=False)
-        self.receptance = nn.Linear(hidden_size, attention_hidden_size, bias=False)
         self.gate = nn.Linear(hidden_size, attention_hidden_size, bias=False)
         self.output = nn.Linear(attention_hidden_size, hidden_size, bias=False)
         self.ln_x = nn.GroupNorm(num_heads, hidden_size, eps=(1e-5)*(config.head_size_divisor**2))
 
-    def extract_key_value(self, hidden, state=None):
+    # TODO: maybe jit, otherwise move inside forward
+    def extract_key_value(self, B, H, S, T, hidden, state=None):
         # Mix hidden with the previous timestep to produce key, value, receptance
         if hidden.size(1) == 1 and state is not None:
             shifted = state[0][:, :, self.layer_id]
@@ -392,6 +394,7 @@ class Rwkv6PreTrainedModel(PreTrainedModel):
             )
             time_weight = time_weight[None, None, :]
 
+            # https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4neo/src/model.py#L398
             decay_speed = [
                 -6.0 + 5.0 * (h / (attention_hidden_size - 1)) ** (0.7 + 1.3 * ratio_0_to_1)
                 for h in range(attention_hidden_size)
@@ -552,7 +555,7 @@ class Rwkv6Model(Rwkv6PreTrainedModel):
         super().__init__(config)
 
         self.embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.blocks = nn.ModuleList([Rwkv6Block(config, layer_id=idx) for idx in range(config.num_hidden_layers)])
+        self.blocks = nn.ModuleList([RwkvBlock(config, layer_id=idx) for idx in range(config.num_hidden_layers)])
         self.ln_out = nn.LayerNorm(config.hidden_size)
 
         self.layers_are_rescaled = False
@@ -699,32 +702,10 @@ class Rwkv6Model(Rwkv6PreTrainedModel):
 
         self.layers_are_rescaled = not self.training
 
-    def _bnb_4bit_dequantize_and_rescale(self, target_layer, block_id):
-        r"""
-        Perform the dequantization and rescaling of the weights of a given layer. After that operation the layer will
-        be quantized again.
-        """
-        if not is_bitsandbytes_available():
-            raise ImportError("Please install bitsandbytes to use this method.")
-        import bitsandbytes as bnb
 
-        dequant_weights = bnb.functional.dequantize_4bit(target_layer.weight.data, target_layer.weight.quant_state)
-
-        dequant_weights.div_(2 ** int(block_id // self.config.rescale_every))
-
-        # re-quantize the model:
-        # we need to put it first on CPU then back to the device
-        # this will create an overhead :/
-        # We set requires_grad=False as we cannot compute gradients on top of 4bit parameters anyway and to avoid
-        # bugs with bnb
-        quant_weight = bnb.nn.Params4bit(dequant_weights.to("cpu"), requires_grad=False).to(dequant_weights.device)
-        setattr(target_layer, "weight", quant_weight)
-
-
-# copied from HuggingFace https://github.com/huggingface/transformers/blob/main/src/transformers/models/rwkv/modeling_rwkv.py
 @add_start_docstrings(
     """
-    The RWKV6 Model transformer with a language modeling head on top (linear layer with weights tied to the input
+    The RWKV Model transformer with a language modeling head on top (linear layer with weights tied to the input
     embeddings).
     """,
     RWKV6_START_DOCSTRING,
