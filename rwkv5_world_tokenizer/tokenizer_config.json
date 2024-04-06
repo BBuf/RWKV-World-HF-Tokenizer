@@ -1,0 +1,12 @@
+{
+  "name_or_path": "rwkv-5-tokenizer",
+  "add_prefix_space": false,
+  "tokenizer_class": "Rwkv5Tokenizer",
+  "use_fast": false,
+  "auto_map": {
+    "AutoTokenizer": [
+      "tokenization_rwkv5.Rwkv5Tokenizer",
+      null
+      ]
+  }
+}
