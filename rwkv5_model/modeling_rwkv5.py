@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
+import pkg_resources
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -35,7 +36,19 @@ from transformers.utils import (
     is_torch_cuda_available,
     logging,
 )
-from flash_rwkv import rwkv5_cuda_linear_attention
+
+try:
+    from flash_rwkv import rwkv5_cuda_linear_attention
+    # Check version
+    required_version = pkg_resources.parse_version("0.2.1")
+    current_version = pkg_resources.get_distribution("flash-rwkv").parsed_version
+
+    if current_version < required_version:
+        raise Exception("Your version of flash-rwkv is below 0.2.1. Please use pip install --upgrade flash-rwkv to update or install the required version.")
+except ImportError:
+    raise ImportError("The flash-rwkv package is not detected. Please install it using pip install flash-rwkv.")
+except pkg_resources.DistributionNotFound:
+    raise ImportError("The flash-rwkv package is not detected. Please install it using pip install flash-rwkv.")
 
 from .configuration_rwkv5 import Rwkv5Config
 
