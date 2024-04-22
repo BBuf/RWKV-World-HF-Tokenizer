@@ -35,6 +35,7 @@ from transformers.utils import (
     is_torch_cuda_available,
     logging,
 )
+from flash_rwkv import rwkv5_cuda_linear_attention
 
 from .configuration_rwkv5 import Rwkv5Config
 
@@ -43,155 +44,6 @@ logger = logging.get_logger(__name__)
 
 _CHECKPOINT_FOR_DOC = "RWKV/rwkv-5-world-1b5"
 _CONFIG_FOR_DOC = "Rwkv5Config"
-
-rwkv5_cuda_kernel = None
-
-
-# Copied from https://github.com/huggingface/transformers/blob/18cbaf13dcaca7145f5652aefb9b19734c56c3cd/src/transformers/models/rwkv/modeling_rwkv.py#L65
-def load_wkv5_cuda_kernel(head_size):
-    from torch.utils.cpp_extension import load as load_kernel
-
-    global rwkv5_cuda_kernel
-
-    kernel_folder = Path(__file__).parent.resolve()
-    cuda_kernel_files = [kernel_folder / f for f in ["wkv5_op.cpp", "wkv5_cuda.cu"]]
-
-    # Only load the kernel if it's not been loaded yet or if we changed the context length
-    if rwkv5_cuda_kernel is not None and rwkv5_cuda_kernel.head_size == head_size:
-        return
-
-    logger.info(f"Loading CUDA kernel for RWKV5 at head size of {head_size}.")
-
-    flags = [
-        "-res-usage",
-        "--maxrregcount 60",
-        "--use_fast_math",
-        "-O3",
-        "-Xptxas -O3",
-        "--extra-device-vectorization",
-        f"-D_N_={head_size}",
-    ]
-    rwkv5_cuda_kernel = load_kernel(
-        name=f"wkv_{head_size}",
-        sources=cuda_kernel_files,
-        verbose=(logging.get_verbosity() == logging.DEBUG),
-        extra_cuda_cflags=flags,
-    )
-    rwkv5_cuda_kernel.head_size = head_size
-
-
-class Rwkv5LinearAttention(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, receptance, key, value, time_decay, time_first, state):
-        with torch.no_grad():
-            assert receptance.dtype == torch.bfloat16
-            assert key.dtype == torch.bfloat16
-            assert value.dtype == torch.bfloat16
-            assert time_decay.dtype == torch.bfloat16
-            assert time_first.dtype == torch.bfloat16
-            assert state.dtype == torch.float32
-            batch, seq_length, hidden_size = key.shape
-            num_heads = time_decay.shape[0]
-            ctx.batch = batch
-            ctx.seq_length = seq_length
-            ctx.hidden_size = hidden_size
-            ctx.num_heads = num_heads
-            e_time_decay = (-torch.exp(time_decay.float())).contiguous()
-            ee_time_decay = (torch.exp(e_time_decay)).contiguous()
-            assert ee_time_decay.dtype == torch.float32
-            ctx.save_for_backward(receptance, key, value, ee_time_decay, e_time_decay, time_first)
-            out = torch.empty(
-                (batch, seq_length, hidden_size),
-                device=receptance.device,
-                dtype=torch.bfloat16,
-                memory_format=torch.contiguous_format,
-            )
-            state = state.clone()
-            rwkv5_cuda_kernel.forward_bf16(
-                batch,
-                seq_length,
-                hidden_size,
-                num_heads,
-                state,
-                receptance,
-                key,
-                value,
-                ee_time_decay,
-                time_first,
-                out,
-            )
-            return out, state
-
-    @staticmethod
-    def backward(ctx, gout):
-        with torch.no_grad():
-            assert gout.dtype == torch.bfloat16
-            batch = ctx.batch
-            seq_length = ctx.seq_length
-            hidden_size = ctx.hidden_size
-            num_heads = ctx.num_heads
-            receptance, key, value, ee_time_decay, e_time_decay, time_first = ctx.saved_tensors
-
-            global_shape = (batch, seq_length, hidden_size)
-
-            # TODO dtype should not be forced here IMO
-            greceptance = torch.empty(
-                global_shape,
-                device=gout.device,
-                requires_grad=False,
-                dtype=torch.bfloat16,
-                memory_format=torch.contiguous_format,
-            )
-            g_key = torch.empty(
-                global_shape,
-                device=gout.device,
-                requires_grad=False,
-                dtype=torch.bfloat16,
-                memory_format=torch.contiguous_format,
-            )
-            g_value = torch.empty(
-                global_shape,
-                device=gout.device,
-                requires_grad=False,
-                dtype=torch.bfloat16,
-                memory_format=torch.contiguous_format,
-            )
-            g_time_decay = torch.empty(
-                (batch, hidden_size),
-                device=gout.device,
-                requires_grad=False,
-                dtype=torch.bfloat16,
-                memory_format=torch.contiguous_format,
-            )
-            g_time_first = torch.empty(
-                (batch, hidden_size),
-                device=gout.device,
-                requires_grad=False,
-                dtype=torch.bfloat16,
-                memory_format=torch.contiguous_format,
-            )
-            rwkv5_cuda_kernel.backward_bf16(
-                batch,
-                seq_length,
-                hidden_size,
-                num_heads,
-                receptance,
-                key,
-                value,
-                ee_time_decay,
-                e_time_decay,
-                time_first,
-                gout,
-                greceptance,
-                g_key,
-                g_value,
-                g_time_decay,
-                g_time_first,
-            )
-            head_size = hidden_size // num_heads
-            g_time_decay = torch.sum(g_time_decay, 0).view(num_heads, head_size)
-            g_time_first = torch.sum(g_time_first, 0).view(num_heads, head_size)
-            return (None, None, None, None, greceptance, g_key, g_value, g_time_decay, g_time_first)
 
 
 def rwkv5_linear_attention_cpu(receptance, key, value, time_decay, time_first, state):
@@ -224,24 +76,18 @@ def RWKV5_linear_attention(training, receptance, key, value, time_decay, time_fi
     # Launching the CUDA kernel for just one token will actually be slower (there is no for loop in the CPU version
     # in this case).
     one_token = key.size(1) == 1
-    if not training or rwkv5_cuda_kernel is None or no_cuda or one_token:
+    if not training or no_cuda or one_token:
         return rwkv5_linear_attention_cpu(
             receptance, key, value, time_decay, time_first, state
         )
     else:
-        return Rwkv5LinearAttention.apply(receptance, key, value, time_decay, time_first, state)
+        return rwkv5_cuda_linear_attention(receptance.float(), key.float(), value.float(), time_decay.float().flatten(), time_first.float().flatten(), state)
 
 
 class Rwkv5SelfAttention(nn.Module):
     def __init__(self, config, layer_id=0):
         super().__init__()
         self.config = config
-        kernel_loaded = rwkv5_cuda_kernel is not None and rwkv5_cuda_kernel.head_size == config.head_size
-        if is_ninja_available() and is_torch_cuda_available() and not kernel_loaded:
-            try:
-                load_wkv5_cuda_kernel(config.head_size)
-            except Exception:
-                logger.info("Could not load the custom CUDA kernel for RWKV5 attention.")
         self.layer_id = layer_id
         hidden_size = config.hidden_size
         attention_hidden_size = config.attention_hidden_size
@@ -311,7 +157,7 @@ class Rwkv5SelfAttention(nn.Module):
         out = self.output(out)
         return out, state
 
-# Copied from rwkv exceot for the intermediate size
+# Copied from rwkv except for the intermediate size
 class Rwkv5FeedForward(nn.Module):
     def __init__(self, config, layer_id=0):
         super().__init__()
