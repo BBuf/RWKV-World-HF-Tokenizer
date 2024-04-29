@@ -37,6 +37,13 @@ from transformers.utils import (
 )
 
 from .configuration_rwkv6 import Rwkv6Config
+try:
+    from fla.ops.rwkv6.recurrent_fuse import fused_recurrent_rwkv6
+except ImportError:
+    print("Required module is not installed. Please install it using the following commands:")
+    print("pip install -U git+https://github.com/sustcsonglin/flash-linear-attention")
+    print("Additionally, ensure you have the correct version of Triton installed:")
+    print("pip install triton==2.2.0")
 
 
 logger = logging.get_logger(__name__)
@@ -44,102 +51,15 @@ logger = logging.get_logger(__name__)
 _CHECKPOINT_FOR_DOC = "RWKV/rwkv-6-world-1b6"
 _CONFIG_FOR_DOC = "Rwkv6Config"
 
-rwkv6_cuda_kernel = None
-
-def load_wkv6_cuda_kernel(head_size, ctx_len):
-    from torch.utils.cpp_extension import load as load_kernel
-
-    global rwkv6_cuda_kernel
-
-    kernel_folder = Path(__file__).parent.resolve()
-    cuda_kernel_files = [kernel_folder / f for f in ["wkv6_op.cpp", "wkv6_cuda.cu"]]
-
-    # Only load the kernel if it's not been loaded yet or if we changed the context length
-    if rwkv6_cuda_kernel is not None and rwkv6_cuda_kernel.head_size == head_size:
-        return
-
-    logger.info(f"Loading CUDA kernel for RWKV at head size of {head_size}.")
-
-    flags = [
-        "-res-usage", 
-        # "--maxrregcount 60", # not sure, should we add this? its not in RWKV-LM
-        "--use_fast_math", 
-        "-O3", 
-        "-Xptxas -O3", 
-        "--extra-device-vectorization", 
-        f"-D_N_={head_size}", 
-        f"-D_T_={ctx_len}"
-    ]
-    rwkv6_cuda_kernel = load_kernel(
-        name=f"wkv_{head_size}_{ctx_len}",
-        sources=cuda_kernel_files,
-        verbose=(logging.get_verbosity() == logging.DEBUG),
-        extra_cuda_cflags=flags,
-    )
-    rwkv6_cuda_kernel.head_size = head_size
-    rwkv6_cuda_kernel.ctx_len = ctx_len
-
-
-class Rwkv6LinearAttention(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, receptance, key, value, time_decay, time_first, state):
-        with torch.no_grad():
-            assert receptance.dtype == torch.bfloat16
-            assert key.dtype == torch.bfloat16
-            assert value.dtype == torch.bfloat16
-            assert time_decay.dtype == torch.bfloat16
-            assert time_first.dtype == torch.bfloat16
-            assert state.dtype == torch.float32
-            #assert HEAD_SIZE == C // H
-            Batch, SequenceLength, HiddenSize = key.shape
-            NumHeads, HeadSize = time_decay.shape
-            ctx.Batch = Batch
-            ctx.SequenceLength = SequenceLength
-            ctx.HiddenSize = HiddenSize
-            ctx.NumHeads = NumHeads
-            assert receptance.is_contiguous()
-            assert key.is_contiguous()
-            assert value.is_contiguous()
-            assert time_decay.is_contiguous()
-            assert time_first.is_contiguous()
-            e_time_decay = (-torch.exp(time_decay.float())).contiguous()
-            ctx.save_for_backward(receptance, key, value, e_time_decay, time_first)
-            out = torch.empty((Batch, SequenceLength, HiddenSize), device=receptance.device, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
-            # FIXME - current kernel does not handle nor update state
-            rwkv6_cuda_kernel.forward(Batch, SequenceLength, HiddenSize, NumHeads, receptance, key, value, e_time_decay, time_first, out)
-            return out, state
-
-    @staticmethod
-    def backward(ctx, g_out, g_state):
-        with torch.no_grad():
-            assert g_out.dtype == torch.bfloat16
-            Batch = ctx.Batch
-            SequenceLength = ctx.SequenceLength
-            HiddenSize = ctx.HiddenSize
-            NumHeads = ctx.NumHeads
-            HeadSize = HiddenSize // NumHeads
-            assert g_out.is_contiguous()
-            receptance, key, value, e_time_decay, time_first = ctx.saved_tensors
-            g_receptance = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
-            g_key = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
-            g_value = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
-            g_time_decay = torch.empty((B, T, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
-            g_time_first = torch.empty((B, C), device=gy.device, requires_grad=False, dtype=torch.bfloat16, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
-            #gs = torch.empty((B, C//H, H, H), device=gy.device, requires_grad=False, dtype=torch.float, memory_format=torch.contiguous_format)#.uniform_(-100, 100)
-            rwkv6_cuda_kernel.backward(B, T, C, H, receptance, key, value, e_time_decay, time_first, g_out, g_receptance, g_key, g_value, g_time_decay, g_time_first)
-            g_time_first = torch.sum(g_time_first, 0).view(NumHeads, HeadSize)
-            return (None, None, None, None, g_receptance, g_key, g_value, g_time_decay, g_time_first, None)
-
 def rwkv6_linear_attention_cpu(receptance, key, value, time_decay, time_first, state):
-    input_dtype = receptance.dtype
     # For CPU fallback. Will be slower and probably take more memory than the custom CUDA kernel if not executed
     # within a torch.no_grad.
-    batch, seq_length, hidden_size = receptance.shape
+    batch, seq_length, _ = receptance.shape
     num_heads, head_size = time_first.shape
     key = key.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2).transpose(-2, -1)
     value = value.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2)
     receptance = receptance.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2)
-    time_decay = torch.exp(-torch.exp(time_decay.float())).view(batch, seq_length, num_heads, head_size).permute(0, 2, 3, 1) # B, H, S, T
+    time_decay = torch.exp(-torch.exp(time_decay.float())).view(batch, seq_length, num_heads, head_size).permute(0, 2, 3, 1)
     time_first = time_first.float().reshape(-1, 1, 1).reshape(num_heads, -1, 1)
     out = torch.zeros_like(key).reshape(batch, seq_length, num_heads, head_size)
 
@@ -168,24 +88,26 @@ def rwkv6_linear_attention(
     # Launching the CUDA kernel for just one token will actually be slower (there is no for loop in the CPU version
     # in this case).
     one_token = key.size(1) == 1
-    if not training or rwkv6_cuda_kernel is None or no_cuda or one_token:
+    if not training or no_cuda or one_token:
         return rwkv6_linear_attention_cpu(
             receptance, key, value, time_decay, time_first, state
         )
     else:
-        return Rwkv6LinearAttention.apply(receptance, key, value, time_decay, time_first, state)
+        batch, seq_length, _ = receptance.shape
+        num_heads, head_size = time_first.shape
+        key = key.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2) # B, T, H, K -> B, H, T, K
+        value = value.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2) # B, T, H, K - > B, H, T, V
+        receptance = receptance.float().view(batch, seq_length, num_heads, head_size).transpose(1, 2) # B, H, T, K
+        time_decay = -torch.exp(time_decay.float()).view(batch, seq_length, num_heads, head_size).permute(0, 2, 1, 3) # B, T, H, K -> B, H, T, K
+        time_first = time_first.float().reshape(num_heads, head_size) # H, K
+        out, state = fused_recurrent_rwkv6(receptance, key, value, time_decay, time_first, scale=1.0, initial_state=state, output_final_state=True)
+        return out.transpose(1, 2), state
 
 
 class Rwkv6SelfAttention(nn.Module):
     def __init__(self, config, layer_id=0):
         super().__init__()
         self.config = config
-        kernel_loaded = rwkv6_cuda_kernel is not None and rwkv6_cuda_kernel.head_size == config.head_size
-        if is_ninja_available() and is_torch_cuda_available() and not kernel_loaded:
-            try:
-                load_wkv6_cuda_kernel(config.head_size, config.max_context_length) # FIXME - context_length is not a configured attribute
-            except Exception:
-                logger.info("Could not load the custom CUDA kernel for RWKV6 attention.")
         self.layer_id = layer_id
         hidden_size = config.hidden_size
         attention_hidden_size = config.attention_hidden_size
