@@ -123,12 +123,16 @@ class Rwkv6SelfAttention(nn.Module):
         self.time_maa_g = nn.Parameter(torch.empty(1, 1, hidden_size))
 
         TIME_MIX_EXTRA_DIM = 32 # generate TIME_MIX for w,k,v,r,g
+        if hidden_size == 4096: #7b
+            TIME_MIX_EXTRA_DIM = 64
         self.time_maa_w1 = nn.Parameter(torch.empty(hidden_size, TIME_MIX_EXTRA_DIM*5))
         self.time_maa_w2 = nn.Parameter(torch.empty(5, TIME_MIX_EXTRA_DIM, hidden_size))
 
         self.time_decay = nn.Parameter(torch.empty(1, 1, attention_hidden_size))
 
         TIME_DECAY_EXTRA_DIM = 64
+        if hidden_size == 4096: #7b
+            TIME_DECAY_EXTRA_DIM = 128
         self.time_decay_w1 = nn.Parameter(torch.empty(hidden_size, TIME_DECAY_EXTRA_DIM))
         self.time_decay_w2 = nn.Parameter(torch.empty(TIME_DECAY_EXTRA_DIM, attention_hidden_size))
 
