@@ -44,7 +44,8 @@ HIDEN_SIZE_MAPPING = {
     "1B6": 2048,
     "3B": 2560,
     "7B": 4096,
-    "14B": 5120,
+    // The current 14B is an extended 7B stacked together
+    "14B": 4096,
 }
 
 def convert_state_dict(state_dict):
